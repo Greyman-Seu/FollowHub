@@ -1,59 +1,41 @@
 # followhub
 
-`followhub` is a repository for a future skill and scheduled tool that follows the latest information from multiple sources, including X, WeChat Official Accounts, and arXiv.
+`followhub` 是一个面向多源信息跟踪、摘要生成与网页发布的仓库。它的目标是把 X、公众号、arXiv 等平台上的高价值内容汇聚起来，生成每日摘要，并逐步演进为可由 agent 编排的 skill / tool 系统。
 
-## Goal
+## 当前状态
 
-The repository is intended to evolve into a unified information-following system that can:
+当前仓库已完成第一轮产品与架构文档整理，核心文档位于 `company/` 目录。
 
-- fetch updates from multiple sources
-- normalize and rank items
-- store recent results
-- trigger on a schedule
-- expose a reusable skill or automation entrypoint
+## 文档入口
 
-## Planned Scope
+- 产品总览：`company/00-overview/followhub-product-overview.md`
+- 总 PRD：`company/01-prd/prd-master.md`
+- 第一阶段 PRD：`company/01-prd/prd-phase1-daily-brief.md`
+- 系统架构：`company/02-architecture/system-architecture.md`
+- 实施路线图：`company/03-planning/implementation-roadmap.md`
 
-Initial source targets:
-
-- X
-- WeChat Official Accounts
-- arXiv
-
-Potential future extensions:
-
-- RSS
-- GitHub releases
-- newsletters
-- websites with change tracking
-
-## Repository Layout
+## 仓库结构
 
 ```text
 followhub/
-├── README.md
-├── .gitignore
+├── company/
+│   ├── 00-overview/
+│   ├── 01-prd/
+│   ├── 02-architecture/
+│   ├── 03-planning/
+│   ├── 04-operations/
+│   ├── 05-release/
+│   └── 06-decisions/
 ├── docs/
-│   └── notes/
-├── skill/
-│   └── README.md
 ├── scheduler/
-│   └── README.md
+├── skill/
 ├── sources/
-│   └── README.md
 └── storage/
-    └── .gitkeep
 ```
 
-## Design Direction
+## 后续方向
 
-This repository should stay source-agnostic at the top level:
-
-- `sources/` contains fetchers or adapters for each upstream platform
-- `scheduler/` contains periodic execution logic
-- `skill/` contains the skill-facing wrapper or orchestration entrypoint
-- `storage/` is reserved for local cache, snapshots, or derived artifacts
-
-## Status
-
-Repository initialized. Implementation is intentionally not started yet.
+- 完成 Phase 1 端到端 pipeline 实现
+- 生成本地静态日报页面
+- 接入 `tenstep.top/follow/`
+- 逐步将稳定能力抽象为 skill，并接入 Claude / Codex 等 agent

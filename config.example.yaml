@@ -1,0 +1,23 @@
+# FollowHub local config template
+#
+# Recommended usage in this repo:
+# 1. cp config.example.yaml config.yaml
+# 2. Fill in access_key_id and secret_access_key
+# 3. Either export FOLLOWHUB_CONFIG="$PWD/config.yaml"
+#    or pass --config-file ./config.yaml to the helper script
+
+rclone:
+  # Cloudflare R2 account id from the S3 API endpoint:
+  # https://<account_id>.r2.cloudflarestorage.com/<bucket>
+  account_id: 55089addaf72336be3109073072340fd
+
+  # R2 API credentials for write/list/delete operations.
+  # Public custom domains do not replace these credentials for uploads.
+  access_key_id: your_r2_access_key_id
+  secret_access_key: your_r2_secret_access_key
+
+  # Bucket name
+  bucket: followhub
+
+  # Public URL returned after upload
+  public_base_url: https://followhub.tenstep.top

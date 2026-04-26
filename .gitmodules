@@ -1,0 +1,3 @@
+[submodule "submodules/page_github"]
+	path = submodules/page_github
+	url = git@github.com:Greyman-Seu/Greyman-Seu.github.io.git

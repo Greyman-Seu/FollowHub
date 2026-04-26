@@ -1,3 +1,15 @@
 [submodule "submodules/page_github"]
 	path = submodules/page_github
 	url = git@github.com:Greyman-Seu/Greyman-Seu.github.io.git
+[submodule "ref/Arxiv-tracker"]
+	path = ref/Arxiv-tracker
+	url = https://github.com/colorfulandcjy0806/Arxiv-tracker.git
+[submodule "ref/ArxivReader"]
+	path = ref/ArxivReader
+	url = https://github.com/Axi404/ArxivReader.git
+[submodule "ref/evil-read-arxiv"]
+	path = ref/evil-read-arxiv
+	url = https://github.com/juliye2025/evil-read-arxiv.git
+[submodule "ref/hermes-arxiv-agent"]
+	path = ref/hermes-arxiv-agent
+	url = https://github.com/genggng/hermes-arxiv-agent.git

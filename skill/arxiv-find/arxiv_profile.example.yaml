@@ -1,0 +1,34 @@
+categories:
+  - cs.RO
+  - cs.AI
+
+keywords:
+  - vision-language-action
+  - robot policy
+
+exclude_keywords:
+  - survey
+  - medical
+
+logic: AND
+
+topic_context: |
+  Recent work focuses on real robot manipulation, VLA training recipes,
+  data curation, and embodied policy generalization.
+
+favorites:
+  enabled: true
+  keywords:
+    - "VLA"
+  ignore_keywords:
+    - "Medical"
+
+daily:
+  new_submissions_only: true
+  max_results_per_day: 50
+
+backfill:
+  generate_overview: true
+
+search:
+  max_results: 50

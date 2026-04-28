@@ -12,6 +12,8 @@ exclude_keywords:
 
 logic: AND
 
+semantic_scholar_api_key: ""
+
 topic_context: |
   Recent work focuses on real robot manipulation, VLA training recipes,
   data curation, and embodied policy generalization.

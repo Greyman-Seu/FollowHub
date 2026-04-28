@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>arxiv-view</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">FollowHub / arxiv-view</p>
+          <h1 id="pageTitle">arXiv Viewer</h1>
+          <p id="pageSubtitle" class="subtitle">Loading...</p>
+        </div>
+        <div class="hero-actions">
+          <button id="copyFavorites" class="button accent" type="button">Copy Favorite IDs</button>
+        </div>
+      </header>
+
+      <section class="controls">
+        <label class="field">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="title, author, summary, keyword">
+        </label>
+        <label class="field">
+          <span>Category</span>
+          <select id="categoryFilter">
+            <option value="">All categories</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Source day</span>
+          <select id="dayFilter">
+            <option value="">All days</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input id="favoriteOnly" type="checkbox">
+          <span>Favorites only</span>
+        </label>
+      </section>
+
+      <section class="summary-bar">
+        <div id="summaryText">Loading...</div>
+        <div id="copyFeedback" class="copy-feedback"></div>
+      </section>
+
+      <section id="cards" class="cards"></section>
+      <template id="cardTemplate">
+        <article class="card">
+          <div class="card-top">
+            <div>
+              <p class="meta-line source-day"></p>
+              <h2 class="card-title"></h2>
+            </div>
+            <button class="favorite-toggle" type="button">☆</button>
+          </div>
+          <div class="score-row">
+            <span class="score-badge hotness"></span>
+            <span class="score-badge overallScore"></span>
+          </div>
+          <p class="meta-line authors"></p>
+          <p class="meta-line dates"></p>
+          <p class="meta-line firstAffiliation"></p>
+          <div class="tags categories"></div>
+          <div class="tags matched-keywords"></div>
+          <p class="one-liner" id="oneLiner"></p>
+          <div class="summary-block">
+            <h3>中文总结</h3>
+            <p class="summary-cn" id="summaryCn"></p>
+          </div>
+          <details class="abstract-details" id="abstractDetails">
+            <summary>English Abstract</summary>
+            <p class="abstract-en"></p>
+          </details>
+          <div class="links"></div>
+        </article>
+      </template>
+    </main>
+    <script src="app.js"></script>
+  </body>
+  </html>

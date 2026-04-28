@@ -1,0 +1,24 @@
+{
+  "mode": "daily",
+  "date": "2026-04-25",
+  "source": "api-submitted-date",
+  "listing_date": null,
+  "count": 1,
+  "entries": [
+    {
+      "id": "2604.25001",
+      "title": "Embodied Policy Transfer with Vision-Language Guidance",
+      "summary": "Backfill second day item.",
+      "authors": ["Second Author"],
+      "categories": ["cs.RO"],
+      "published": "2026-04-25T10:00:00Z",
+      "updated": "2026-04-25T10:00:00Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.25001v1",
+      "html_url": "https://arxiv.org/abs/2604.25001v1",
+      "relevance_score": 2.75,
+      "matched_keywords": ["robot policy"],
+      "favorite_keywords": [],
+      "context_hits": ["policy"]
+    }
+  ]
+}

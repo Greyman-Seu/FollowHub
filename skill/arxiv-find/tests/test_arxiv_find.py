@@ -54,6 +54,7 @@ class ArxivFindSkillTests(unittest.TestCase):
               - cs.RO
             keywords:
               - vision-language-action
+            semantic_scholar_api_key: test-key
             favorites:
               enabled: true
               keywords:
@@ -71,6 +72,7 @@ class ArxivFindSkillTests(unittest.TestCase):
 
         self.assertEqual(profile.categories, ["cs.RO"])
         self.assertEqual(profile.keywords, ["vision-language-action"])
+        self.assertEqual(profile.semantic_scholar_api_key, "test-key")
         self.assertTrue(profile.favorites.enabled)
         self.assertEqual(profile.favorites.keywords, ["VLA"])
         self.assertEqual(profile.favorites.ignore_keywords, ["Medical"])
@@ -222,6 +224,44 @@ class ArxivFindSkillTests(unittest.TestCase):
         self.assertIn("favorites:", content)
         self.assertIn("enabled: true", content)
         self.assertIn("- \"VLA\"", content)
+        self.assertIn("semantic_scholar_api_key:", content)
+
+    def test_enrich_result_payload_adds_contract_fields(self):
+        payload = {
+            "mode": "search",
+            "count": 1,
+            "query": "dummy",
+            "entries": [
+                {
+                    "id": "2604.99999",
+                    "title": "Example Paper",
+                    "summary": "This paper introduces a new robot policy benchmark.",
+                    "authors": ["A", "B"],
+                    "categories": ["cs.RO"],
+                    "published": "2026-04-29T10:00:00Z",
+                    "updated": "2026-04-29T10:00:00Z",
+                    "comments": "Code: https://github.com/example/repo Project: https://example-project.ai",
+                    "pdf_url": "https://arxiv.org/pdf/2604.99999v1",
+                    "html_url": "https://arxiv.org/abs/2604.99999v1",
+                    "relevance_score": 3.1,
+                    "summary_cn": "这篇论文提出了一个机器人策略基准。",
+                    "affiliations": ["Tsinghua University", "Institute X"]
+                }
+            ]
+        }
+        enriched = self.module.enrich_result_payload(payload)
+        item = enriched["entries"][0]
+
+        self.assertIn("abstract_en", item)
+        self.assertIn("one_liner_zh", item)
+        self.assertIn("summary_cn", item)
+        self.assertIn("first_affiliation", item)
+        self.assertIn("code_urls", item)
+        self.assertIn("project_urls", item)
+        self.assertIn("overall_score", item)
+        self.assertEqual(item["first_affiliation"], "Tsinghua University")
+        self.assertTrue(item["code_urls"])
+        self.assertTrue(item["project_urls"])
 
 
 if __name__ == "__main__":

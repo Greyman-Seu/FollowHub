@@ -4,6 +4,7 @@ arxiv_find.py - Hybrid arXiv retrieval for daily briefs, backfills, and search.
 """
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -57,6 +58,7 @@ Modes:
     backfill  Use one submittedDate API window per day and keep each day separate.
     search    Use API query mode with pagination and shared profile filters.
 """
+_ENRICH_MODULE = None
 
 
 @dataclass
@@ -89,6 +91,7 @@ class Profile:
     exclude_keywords: List[str] = field(default_factory=list)
     logic: str = "AND"
     topic_context: str = ""
+    semantic_scholar_api_key: str = ""
     favorites: FavoritesSettings = field(default_factory=FavoritesSettings)
     daily: DailySettings = field(default_factory=DailySettings)
     backfill: BackfillSettings = field(default_factory=BackfillSettings)
@@ -127,6 +130,7 @@ def load_profile(profile_path: Path) -> Profile:
         exclude_keywords=list(data.get("exclude_keywords") or []),
         logic=logic if logic in {"AND", "OR"} else "AND",
         topic_context=str(data.get("topic_context") or "").strip(),
+        semantic_scholar_api_key=str(data.get("semantic_scholar_api_key") or "").strip(),
         favorites=favorites,
         daily=daily,
         backfill=backfill,
@@ -488,7 +492,7 @@ def run_daily(profile: Profile, target_day: date) -> Dict[str, object]:
     for entry in entries:
         entry["source_categories"] = source_categories.get(entry["id"], [])
     filtered = filter_and_sort_entries(entries, profile)
-    return {
+    result = {
         "mode": "daily",
         "date": target_day.isoformat(),
         "source": "list-new",
@@ -496,6 +500,7 @@ def run_daily(profile: Profile, target_day: date) -> Dict[str, object]:
         "count": len(filtered),
         "entries": filtered[: profile.daily.max_results_per_day],
     }
+    return enrich_result_payload(result, profile)
 
 
 def run_backfill_day(
@@ -530,7 +535,7 @@ def run_backfill_day(
         for item in filtered
         if _entry_day(item.get("published")) == target_day
     ]
-    return {
+    result = {
         "mode": "daily",
         "date": target_day.isoformat(),
         "source": source_override,
@@ -538,6 +543,7 @@ def run_backfill_day(
         "count": len(same_day[: profile.daily.max_results_per_day]),
         "entries": same_day[: profile.daily.max_results_per_day],
     }
+    return enrich_result_payload(result, profile)
 
 
 def run_backfill(profile: Profile, start_day: date, end_day: date) -> Dict[str, object]:
@@ -570,12 +576,13 @@ def run_search(profile: Profile, limit: Optional[int] = None) -> Dict[str, objec
             break
         start += page_size
     filtered = filter_and_sort_entries(collected, profile)
-    return {
+    result = {
         "mode": "search",
         "count": len(filtered[:max_results]),
         "entries": filtered[:max_results],
         "query": query,
     }
+    return enrich_result_payload(result, profile)
 
 
 def _entry_day(value: Optional[str]) -> Optional[date]:
@@ -586,6 +593,35 @@ def _entry_day(value: Optional[str]) -> Optional[date]:
         return datetime.fromisoformat(normalized).date()
     except ValueError:
         return None
+
+
+def _load_enrich_module():
+    global _ENRICH_MODULE
+    if _ENRICH_MODULE is not None:
+        return None if _ENRICH_MODULE is False else _ENRICH_MODULE
+
+    enrich_path = Path(__file__).resolve().parents[1] / "arxiv-enrich" / "arxiv_enrich.py"
+    if not enrich_path.exists():
+        _ENRICH_MODULE = False
+        return None
+
+    spec = importlib.util.spec_from_file_location("followhub_arxiv_enrich", enrich_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    _ENRICH_MODULE = module
+    return module
+
+
+def enrich_result_payload(payload: Dict[str, object], profile: Optional[Profile] = None) -> Dict[str, object]:
+    module = _load_enrich_module()
+    if module is None:
+        return payload
+    return module.enrich_payload(
+        payload,
+        enable_external_metadata=bool(profile and profile.semantic_scholar_api_key),
+        semantic_scholar_api_key=(profile.semantic_scholar_api_key if profile else None),
+    )
 
 
 def render_daily_markdown(result: Dict[str, object]) -> str:

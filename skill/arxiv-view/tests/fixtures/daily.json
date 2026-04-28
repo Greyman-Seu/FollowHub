@@ -1,0 +1,49 @@
+{
+  "mode": "daily",
+  "date": "2026-04-24",
+  "source": "list-new",
+  "listing_date": "2026-04-24",
+  "count": 2,
+  "entries": [
+    {
+      "id": "2604.21924",
+      "title": "Long-Horizon Manipulation via Trace-Conditioned VLA Planning",
+      "summary": "A VLA planning system for long-horizon manipulation.",
+      "one_liner_zh": "把短视 VLA 执行扩展到长程操作规划。",
+      "summary_cn": "该工作提出一个任务管理 VLM 与执行器解耦的长程操作框架。",
+      "authors": ["Isabella Liu", "Sifei Liu"],
+      "first_affiliation": "Stanford University",
+      "affiliations": ["Stanford University", "NVIDIA Research"],
+      "categories": ["cs.RO"],
+      "published": "2026-04-23T17:59:04Z",
+      "updated": "2026-04-23T17:59:04Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.21924v1",
+      "html_url": "https://arxiv.org/abs/2604.21924v1",
+      "hot_score": 2.4,
+      "overall_score": 4.6,
+      "relevance_score": 3.55,
+      "matched_keywords": ["VLA", "vision-language-action"],
+      "favorite_keywords": ["VLA"],
+      "code_urls": ["https://github.com/example/loho-manip"],
+      "project_urls": ["https://www.liuisabella.com/LoHoManip"],
+      "context_hits": ["manipulation"]
+    },
+    {
+      "id": "2604.21241",
+      "title": "CorridorVLA: Explicit Spatial Constraints for Generative Action Heads",
+      "summary": "Generative action head with explicit spatial anchors for VLA models.",
+      "one_liner_zh": "",
+      "summary_cn": "",
+      "authors": ["Dachong Li"],
+      "categories": ["cs.RO", "cs.AI"],
+      "published": "2026-04-23T03:17:50Z",
+      "updated": "2026-04-23T03:17:50Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.21241v1",
+      "html_url": "https://arxiv.org/abs/2604.21241v1",
+      "relevance_score": 2.35,
+      "matched_keywords": ["VLA"],
+      "favorite_keywords": ["VLA"],
+      "context_hits": []
+    }
+  ]
+}

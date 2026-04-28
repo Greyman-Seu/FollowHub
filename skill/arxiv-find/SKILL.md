@@ -26,6 +26,7 @@ This skill keeps the daily-brief semantics strict: daily-style outputs should pr
 - Daily-style briefs should prefer **New submissions** only.
 - Keyword search should still support pagination, filtering, and topic-context relevance hints.
 - Support an `ArxivReader`-style `favorites` block for highlighted interest keywords.
+- When multiple arXiv IDs need downstream enrichment, prefer orchestration plus subagent workers instead of one long inline pass.
 - `arxiv-view` is a separate future skill for HTML rendering and is intentionally out of scope here.
 
 ## Design Pattern
@@ -48,6 +49,14 @@ Use a hybrid acquisition strategy instead of forcing one source to do every job:
    - Support category filters, keyword filters, exclude keywords, pagination, and simple relevance scoring
 
 This split keeps the daily semantics accurate while preserving the stronger query and pagination capabilities of the API.
+
+## Agent Role
+
+`arxiv-find` is the main coordinator for the arXiv pipeline.
+
+- Single-paper follow-up can stay inline.
+- Multi-paper follow-up should prefer subagent fan-out.
+- In those cases, `arxiv-enrich` is the default worker skill and `arxiv-find` stays responsible for deduplication, merge, and downstream handoff to `arxiv-view`.
 
 ## Shared Profile
 

@@ -1,0 +1,39 @@
+{
+  "mode": "daily",
+  "date": "2026-04-24",
+  "source": "api-submitted-date",
+  "listing_date": null,
+  "count": 2,
+  "entries": [
+    {
+      "id": "2604.21924",
+      "title": "Long-Horizon Manipulation via Trace-Conditioned VLA Planning",
+      "summary": "Backfill daily item one.",
+      "authors": ["Isabella Liu"],
+      "categories": ["cs.RO"],
+      "published": "2026-04-24T08:00:00Z",
+      "updated": "2026-04-24T08:00:00Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.21924v1",
+      "html_url": "https://arxiv.org/abs/2604.21924v1",
+      "relevance_score": 3.55,
+      "matched_keywords": ["VLA"],
+      "favorite_keywords": ["VLA"],
+      "context_hits": ["manipulation"]
+    },
+    {
+      "id": "2604.21241",
+      "title": "CorridorVLA: Explicit Spatial Constraints for Generative Action Heads",
+      "summary": "Backfill daily item two.",
+      "authors": ["Dachong Li"],
+      "categories": ["cs.RO", "cs.AI"],
+      "published": "2026-04-24T09:00:00Z",
+      "updated": "2026-04-24T09:00:00Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.21241v1",
+      "html_url": "https://arxiv.org/abs/2604.21241v1",
+      "relevance_score": 2.35,
+      "matched_keywords": ["VLA"],
+      "favorite_keywords": ["VLA"],
+      "context_hits": []
+    }
+  ]
+}

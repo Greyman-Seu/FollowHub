@@ -1,0 +1,22 @@
+{
+  "mode": "search",
+  "count": 1,
+  "query": "((cat:cs.RO OR cat:cs.AI) AND ((ti:\"vision-language-action\" OR abs:\"vision-language-action\" OR co:\"vision-language-action\")))",
+  "entries": [
+    {
+      "id": "2604.30001",
+      "title": "A Search Result for Vision-Language-Action Control",
+      "summary": "Search-oriented result used for viewer tests.",
+      "authors": ["Example Author"],
+      "categories": ["cs.RO"],
+      "published": "2026-04-27T10:00:00Z",
+      "updated": "2026-04-27T10:00:00Z",
+      "pdf_url": "https://arxiv.org/pdf/2604.30001v1",
+      "html_url": "https://arxiv.org/abs/2604.30001v1",
+      "relevance_score": 1.9,
+      "matched_keywords": ["vision-language-action"],
+      "favorite_keywords": [],
+      "context_hits": ["control"]
+    }
+  ]
+}

@@ -7,6 +7,12 @@ description: Use when the user wants to find architecture figures, system overvi
 
 Extract all figures from arXiv papers, then use LLM judgment to match the user's intent against figure captions.
 
+## Invocation Model
+
+- This skill is meant to be installed into Codex / Claude and invoked by an agent.
+- The Python CLI is the extraction tool surface that the agent calls internally.
+- The CLI is not intended to be the primary human-facing interface.
+
 ## Three-Level Fallback
 
 ```text
@@ -23,7 +29,7 @@ Level 3: arxiv.org/pdf/{id} -> extract embedded images + captions via pdftotext
 | 2 | Source package | May be empty | Local file (`image_path`) | Good |
 | 3 | PDF | From `pdftotext` | Local file (`image_path`) | OK |
 
-## Usage
+## Agent Entry Pattern
 
 ```bash
 /arxiv-fig <arxiv_id_or_url>
@@ -51,7 +57,7 @@ Level 3: arxiv.org/pdf/{id} -> extract embedded images + captions via pdftotext
 
 For Level 2 where captions may be empty, infer from file names such as `arch_v4.png`.
 
-## Running the Script
+## Agent Tool Surface
 
 ```bash
 python3 /home/tenstep/workspace/followhub/skill/arxiv-fig/arxiv_fig.py "2604.20834"

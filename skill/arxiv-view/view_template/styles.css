@@ -78,7 +78,6 @@ h1 {
 .controls,
 .summary-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   padding: 16px 18px;
   margin-top: 12px;
@@ -86,6 +85,10 @@ h1 {
   border-radius: 20px;
   background: rgba(255, 253, 248, 0.92);
   backdrop-filter: blur(12px);
+}
+
+.controls {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .field,
@@ -156,6 +159,15 @@ h1 {
   box-shadow: var(--card-shadow);
 }
 
+.card.profile-favorite-card {
+  border-color: rgba(31, 95, 163, 0.35);
+  box-shadow: 0 16px 34px rgba(31, 95, 163, 0.12);
+}
+
+.card.ignored-card {
+  border-color: rgba(172, 61, 34, 0.3);
+}
+
 .card-top {
   display: flex;
   gap: 12px;
@@ -202,6 +214,26 @@ h1 {
   background: #eaf1ff;
   color: var(--accent);
   font: 700 12px/1 ui-sans-serif, system-ui, sans-serif;
+}
+
+.profileFavorite {
+  background: #f6e8bf;
+  color: #7a4c00;
+}
+
+.favorite-keywords .tag {
+  background: #e7f4e8;
+  color: #25633a;
+}
+
+.context-hits .tag {
+  background: #e8f0fb;
+  color: #305d91;
+}
+
+.matched-excludes .tag {
+  background: #f8e3dc;
+  color: #9a3f2a;
 }
 
 .tags {

@@ -85,6 +85,9 @@ class ArxivViewSkillTests(unittest.TestCase):
         self.assertEqual(first["affiliations"][0], "Stanford University")
         self.assertEqual(first["hot_score"], 2.4)
         self.assertEqual(first["overall_score"], 4.6)
+        self.assertEqual(first["recency_score"], 2.2)
+        self.assertEqual(first["matched_domain"], "Robotics")
+        self.assertTrue(first["is_favorite"])
         self.assertTrue(first["code_urls"])
         self.assertTrue(first["project_urls"])
 
@@ -92,6 +95,10 @@ class ArxivViewSkillTests(unittest.TestCase):
         self.assertEqual(second["one_liner_zh"], "")
         self.assertEqual(second["summary_cn"], "")
         self.assertEqual(second["first_affiliation"], "")
+        self.assertEqual(second["matched_domain"], "Robotics")
+        self.assertEqual(second["matched_excludes"], ["survey"])
+        self.assertEqual(second["favorite_ignores"], ["Medical"])
+        self.assertTrue(second["is_ignored"])
 
     def test_build_bundle_writes_static_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -114,9 +121,15 @@ class ArxivViewSkillTests(unittest.TestCase):
             html_text = (Path(tmpdir) / "index.html").read_text(encoding="utf-8")
             js_text = (Path(tmpdir) / "app.js").read_text(encoding="utf-8")
             self.assertIn("favoriteOnly", html_text)
+            self.assertIn("profileFavoriteOnly", html_text)
+            self.assertIn("hideIgnored", html_text)
+            self.assertIn("domainFilter", html_text)
             self.assertIn("copyFavorites", html_text)
             self.assertIn("navigator.clipboard", js_text)
             self.assertIn("localStorage", js_text)
+            self.assertIn("profileFavoriteOnly", js_text)
+            self.assertIn("hideIgnored", js_text)
+            self.assertIn("domainFilter", js_text)
 
     def test_generated_bundle_contains_enrich_display_slots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -131,7 +144,18 @@ class ArxivViewSkillTests(unittest.TestCase):
             self.assertIn("abstractDetails", html_text)
             self.assertIn("firstAffiliation", html_text)
             self.assertIn("hotness", html_text)
+            self.assertIn("recencyScore", html_text)
+            self.assertIn("matchedDomain", html_text)
+            self.assertIn("profileFavorite", html_text)
+            self.assertIn("favorite-keywords", html_text)
+            self.assertIn("context-hits", html_text)
+            self.assertIn("matched-excludes", html_text)
             self.assertIn("暂无中文总结", js_text)
+            self.assertIn("Matched domain", js_text)
+            self.assertIn("Profile favorite", js_text)
+            self.assertIn("Favorite: ", js_text)
+            self.assertIn("Context: ", js_text)
+            self.assertIn("Excluded: ", js_text)
 
     def test_data_json_contains_unified_items(self):
         with tempfile.TemporaryDirectory() as tmpdir:

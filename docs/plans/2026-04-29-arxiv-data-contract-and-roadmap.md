@@ -1,6 +1,6 @@
 # arxiv Data Contract and Skill Roadmap
 
-**Goal:** Lock the long-term contract between `arxiv-find`, `arxiv-enrich`, `arxiv-view`, and the future `arxiv-workflow` so implementation can proceed without re-debating field ownership.
+**Goal:** Lock the long-term contract between `arxiv-find`, `arxiv-enrich`, `arxiv-view`, and the future `arxiv-daily` entrypoint so implementation can proceed without re-debating field ownership.
 
 **Status:** Approved planning decision
 
@@ -94,7 +94,7 @@ Should not own:
 - translation
 - metadata crawling
 
-### `arxiv-workflow`
+### `arxiv-daily`
 
 Future orchestration wrapper for:
 
@@ -198,7 +198,7 @@ Degrade gracefully:
 2. `arxiv-enrich`
    - next major implementation target
    - should backfill the contract above
-3. `arxiv-workflow`
+3. `arxiv-daily`
    - only after `find`, `enrich`, and `view` stabilize
 
 ## Immediate Follow-through

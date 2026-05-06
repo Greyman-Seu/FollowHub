@@ -45,7 +45,7 @@ def resolve_config_path(explicit_path: str | None) -> Path:
 def load_rclone_config(config_path: Path) -> dict:
     with config_path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
-    section = data.get("rclone") or {}
+    section = data.get("r2") or data.get("rclone") or {}
     required = ["account_id", "access_key_id", "secret_access_key", "bucket"]
     missing = [key for key in required if not section.get(key)]
     if missing:

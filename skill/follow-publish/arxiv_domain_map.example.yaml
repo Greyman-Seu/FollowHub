@@ -1,0 +1,48 @@
+domains:
+  llm-vlm:
+    name: LLM/VLM
+    keywords:
+      - llm
+      - vlm
+      - multimodal
+      - vision-language
+      - reasoning
+    categories:
+      - cs.AI
+      - cs.CL
+      - cs.LG
+      - cs.CV
+      - cs.MM
+  physical-embodied-intelligence:
+    name: Physical/Embodied Intelligence
+    keywords:
+      - robot
+      - robotics
+      - manipulation
+      - embodied
+      - vla
+      - policy
+    categories:
+      - cs.RO
+  aigc:
+    name: AIGC
+    keywords:
+      - diffusion
+      - image generation
+      - video generation
+      - image editing
+      - video editing
+    categories:
+      - cs.CV
+      - cs.MM
+  agent:
+    name: Agent
+    keywords:
+      - agent
+      - tool use
+      - planning
+      - workflow
+      - browser
+      - code agent
+    categories:
+      - cs.AI

@@ -13,6 +13,12 @@ Hybrid arXiv retrieval for three jobs:
 
 This skill keeps the daily-brief semantics strict: daily-style outputs should prefer **New submissions** and avoid mixing days together.
 
+## Invocation Model
+
+- This skill is meant to be installed into Codex / Claude and invoked by an agent.
+- The Python CLI is the tool surface that the agent calls internally.
+- The CLI is not intended to be the long-term human-facing product interface.
+
 ## Requirements Snapshot
 
 - Support two entry paths:
@@ -60,6 +66,35 @@ This split keeps the daily semantics accurate while preserving the stronger quer
 
 ## Shared Profile
 
+Preferred:
+
+- use the unified FollowHub config file
+- put arXiv settings under the `arxiv:` section
+
+Backward compatibility:
+
+- the script still accepts the older flat arXiv-only YAML shape
+- `arxiv_profile.example.yaml` is now mainly a compatibility example
+
+Unified config example:
+
+```yaml
+arxiv:
+  categories:
+    - cs.RO
+    - cs.AI
+
+  keywords:
+    - vision-language-action
+    - robot policy
+
+  exclude_keywords:
+    - survey
+    - medical
+```
+
+Legacy flat example:
+
 Use one YAML profile file, for example:
 
 ```yaml
@@ -99,7 +134,7 @@ The skill includes an example file at `arxiv_profile.example.yaml`.
 
 `favorites` follows the same spirit as `ArxivReader`: a lightweight highlight layer for especially important directions. It is not a separate config file.
 
-## Commands
+## Agent Tool Surface
 
 ```bash
 python3 /home/tenstep/workspace/followhub/skill/arxiv-find/arxiv_find.py help
@@ -125,7 +160,7 @@ python3 /home/tenstep/workspace/followhub/skill/arxiv-find/arxiv_find.py run --m
 
 1. Resolve the shared YAML profile path.
 2. Choose mode: `daily`, `backfill`, or `search`.
-3. Run the script.
+3. Call the bundled CLI tool.
 4. Read the generated JSON and Markdown outputs.
 5. If HTML browsing is needed later, hand off the result bundle to `arxiv-view`.
 

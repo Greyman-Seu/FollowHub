@@ -20,7 +20,7 @@ This plan follows the approved staged route:
 2. `arxiv-enrich`
    - future enrichment and ranking layer
    - also the default internal phase behind `arxiv-find` outputs
-3. `arxiv-workflow`
+3. `arxiv-daily`
    - future orchestration skill that chains `find -> enrich -> view -> publish`
 
 `arxiv-view` phase 1 only consumes `arxiv-find` outputs.

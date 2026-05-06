@@ -38,7 +38,12 @@ function normalizedText(item) {
     (item.authors || []).join(" "),
     item.first_affiliation || "",
     (item.categories || []).join(" "),
+    item.matched_domain || "",
     (item.matched_keywords || []).join(" "),
+    (item.favorite_keywords || []).join(" "),
+    (item.favorite_ignores || []).join(" "),
+    (item.context_hits || []).join(" "),
+    (item.matched_excludes || []).join(" "),
     (item.source_day || "")
   ].join(" ").toLowerCase();
 }
@@ -48,7 +53,10 @@ function getFilters() {
     query: document.getElementById("searchInput").value.trim().toLowerCase(),
     category: document.getElementById("categoryFilter").value,
     day: document.getElementById("dayFilter").value,
-    favoriteOnly: document.getElementById("favoriteOnly").checked
+    domain: document.getElementById("domainFilter").value,
+    favoriteOnly: document.getElementById("favoriteOnly").checked,
+    profileFavoriteOnly: document.getElementById("profileFavoriteOnly").checked,
+    hideIgnored: document.getElementById("hideIgnored").checked
   };
 }
 
@@ -64,7 +72,16 @@ function filterItems(items) {
     if (filters.day && item.source_day !== filters.day) {
       return false;
     }
+    if (filters.domain && item.matched_domain !== filters.domain) {
+      return false;
+    }
     if (filters.favoriteOnly && !favorites.has(String(item.arxiv_id))) {
+      return false;
+    }
+    if (filters.profileFavoriteOnly && !item.is_favorite) {
+      return false;
+    }
+    if (filters.hideIgnored && (item.is_ignored || (item.matched_excludes || []).length)) {
       return false;
     }
     return true;
@@ -109,9 +126,16 @@ function tagHtml(values) {
     .join("");
 }
 
+function prefixedTagHtml(values, prefix) {
+  return (values || [])
+    .map((value) => `<span class="tag">${prefix}${value}</span>`)
+    .join("");
+}
+
 function buildCard(item) {
   const template = document.getElementById("cardTemplate");
   const node = template.content.cloneNode(true);
+  const card = node.querySelector(".card");
 
   node.querySelector(".source-day").textContent =
     item.source_day ? `${item.source_mode} / ${item.source_day}` : item.source_mode;
@@ -119,21 +143,42 @@ function buildCard(item) {
   node.querySelector(".hotness").textContent =
     item.hot_score ? `Heat ${item.hot_score}` : "";
   node.querySelector(".hotness").style.display = item.hot_score ? "inline-flex" : "none";
+  node.querySelector(".recencyScore").textContent =
+    item.recency_score ? `Recency ${item.recency_score}` : "";
+  node.querySelector(".recencyScore").style.display = item.recency_score ? "inline-flex" : "none";
   node.querySelector(".overallScore").textContent =
     item.overall_score ? `Score ${item.overall_score}` : "";
   node.querySelector(".overallScore").style.display = item.overall_score ? "inline-flex" : "none";
+  node.querySelector(".profileFavorite").textContent =
+    item.is_favorite ? "Profile favorite" : "";
+  node.querySelector(".profileFavorite").style.display = item.is_favorite ? "inline-flex" : "none";
   node.querySelector(".authors").textContent =
     (item.authors || []).length ? `Authors: ${(item.authors || []).join(", ")}` : "Authors: -";
   node.querySelector(".dates").textContent =
     `Published: ${item.published || "-"} | Updated: ${item.updated || "-"}`;
   node.querySelector(".firstAffiliation").textContent =
     `First affiliation: ${item.first_affiliation || "—"}`;
+  node.querySelector(".matchedDomain").textContent =
+    item.matched_domain ? `Matched domain: ${item.matched_domain}` : "Matched domain: —";
   node.querySelector(".categories").innerHTML = tagHtml(item.categories || []);
+  node.querySelector(".matched-domain").innerHTML =
+    item.matched_domain ? tagHtml([`Domain: ${item.matched_domain}`]) : "";
   node.querySelector(".matched-keywords").innerHTML = tagHtml(item.matched_keywords || []);
+  node.querySelector(".favorite-keywords").innerHTML =
+    prefixedTagHtml(item.favorite_keywords || [], "Favorite: ");
+  node.querySelector(".context-hits").innerHTML =
+    prefixedTagHtml(item.context_hits || [], "Context: ");
+  node.querySelector(".matched-excludes").innerHTML =
+    prefixedTagHtml(
+      [...(item.favorite_ignores || []), ...(item.matched_excludes || [])],
+      "Excluded: "
+    );
   node.querySelector(".one-liner").textContent = item.one_liner_zh || "暂无一句话总结";
   node.querySelector(".summary-cn").textContent = item.summary_cn || "暂无中文总结";
   node.querySelector(".abstract-en").textContent = item.abstract_en || "No English abstract available.";
   node.querySelector(".links").innerHTML = linkHtml(item);
+  card.classList.toggle("profile-favorite-card", Boolean(item.is_favorite));
+  card.classList.toggle("ignored-card", Boolean(item.is_ignored) || Boolean((item.matched_excludes || []).length));
 
   const favoriteButton = node.querySelector(".favorite-toggle");
   const syncFavoriteState = () => {
@@ -212,7 +257,7 @@ async function copyFavorites() {
 }
 
 function bindControls() {
-  ["searchInput", "categoryFilter", "dayFilter", "favoriteOnly"].forEach((id) => {
+  ["searchInput", "categoryFilter", "dayFilter", "domainFilter", "favoriteOnly", "profileFavoriteOnly", "hideIgnored"].forEach((id) => {
     document.getElementById(id).addEventListener("input", render);
     document.getElementById(id).addEventListener("change", render);
   });
@@ -238,6 +283,11 @@ async function init() {
 
   fillSelect("categoryFilter", model.meta.categories || [], "All categories");
   fillSelect("dayFilter", model.meta.days || [], "All days");
+  fillSelect(
+    "domainFilter",
+    Array.from(new Set((model.items || []).map((item) => item.matched_domain).filter(Boolean))).sort(),
+    "All domains"
+  );
   bindControls();
   render();
 }

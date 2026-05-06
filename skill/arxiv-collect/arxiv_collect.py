@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-arxiv_find.py - Hybrid arXiv retrieval for daily briefs, backfills, and search.
+arxiv_collect.py - Raw arXiv acquisition for daily and backfill workflows.
 """
 
 import argparse
@@ -26,8 +26,10 @@ except ImportError:  # pragma: no cover - handled at runtime
 
 
 LIST_URL_TEMPLATE = "https://arxiv.org/list/{category}/new?skip=0&show=2000"
+ABS_URL_TEMPLATE = "https://arxiv.org/abs/{arxiv_id}"
 API_URL = "https://export.arxiv.org/api/query"
 LIST_FETCH_MAX_WORKERS = 4
+ABS_FETCH_MAX_WORKERS = 8
 API_FETCH_MAX_WORKERS = 1
 API_PAGE_SIZE = 100
 API_ID_LIST_CHUNK_SIZE = 25
@@ -52,14 +54,13 @@ STOPWORDS = {
     "work",
 }
 HELP_TEXT = """\
-arxiv-find: Hybrid arXiv retrieval for daily briefs, backfills, and search.
+arxiv-collect: Raw arXiv acquisition for daily briefs, backfills, and search.
 
 Usage:
-    arxiv-find help
-    arxiv-find validate-profile --profile /path/to/arxiv-profile.yaml
-    arxiv-find run --mode daily --profile /path/to/arxiv-profile.yaml
-    arxiv-find run --mode backfill --profile /path/to/arxiv-profile.yaml --from-date YYYY-MM-DD --to-date YYYY-MM-DD
-    arxiv-find run --mode search --profile /path/to/arxiv-profile.yaml [--keywords "kw1,kw2"]
+    arxiv-collect help
+    arxiv-collect validate-profile --profile /path/to/followhub.yaml
+    arxiv-collect run --mode daily --profile /path/to/followhub.yaml
+    arxiv-collect run --mode backfill --profile /path/to/followhub.yaml --from-date YYYY-MM-DD --to-date YYYY-MM-DD
 
 Modes:
     daily     Prefer arXiv list/new pages and keep only New submissions.
@@ -304,7 +305,7 @@ def fetch_text(url: str, timeout: int = 45) -> str:
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "followhub-arxiv-find/0.1 (+https://github.com/Greyman-Seu/Greyman-Seu.github.io)",
+            "User-Agent": "followhub-arxiv-collect/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
             "Accept": "application/atom+xml,application/xml,text/html;q=0.9,*/*;q=0.8",
         },
     )
@@ -330,6 +331,11 @@ def fetch_new_list_page(category: str) -> ParsedListPage:
     return parse_new_list_page(html)
 
 
+def fetch_new_list_page_with_html(category: str) -> Tuple[ParsedListPage, str]:
+    html = fetch_text(LIST_URL_TEMPLATE.format(category=urllib.parse.quote(category)))
+    return parse_new_list_page(html), html
+
+
 def fetch_new_list_pages(categories: Sequence[str]) -> Dict[str, ParsedListPage]:
     ordered_categories = [category for category in categories if category]
     if not ordered_categories:
@@ -342,6 +348,18 @@ def fetch_new_list_pages(categories: Sequence[str]) -> Dict[str, ParsedListPage]
     with ThreadPoolExecutor(max_workers=workers) as executor:
         parsed = list(executor.map(fetch_new_list_page, ordered_categories))
     return dict(zip(ordered_categories, parsed))
+
+
+def fetch_new_list_pages_with_html(categories: Sequence[str]) -> Tuple[Dict[str, ParsedListPage], Dict[str, str]]:
+    ordered_categories = [category for category in categories if category]
+    if not ordered_categories:
+        return {}, {}
+    workers = min(LIST_FETCH_MAX_WORKERS, len(ordered_categories))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = list(executor.map(fetch_new_list_page_with_html, ordered_categories))
+    parsed = {category: result[0] for category, result in zip(ordered_categories, results)}
+    html_by_category = {category: result[1] for category, result in zip(ordered_categories, results)}
+    return parsed, html_by_category
 
 
 def fetch_feed_by_id_list(arxiv_ids: Sequence[str]) -> List[Dict[str, object]]:
@@ -364,6 +382,145 @@ def fetch_feed_by_id_list(arxiv_ids: Sequence[str]) -> List[Dict[str, object]]:
         page = fetch_chunk(chunk)
         entries.extend(page)
     return entries
+
+
+def fetch_abs_metadata_by_id_list(
+    arxiv_ids: Sequence[str],
+    source_categories: Optional[Dict[str, List[str]]] = None,
+) -> List[Dict[str, object]]:
+    ordered_ids = [normalize_arxiv_id(arxiv_id) for arxiv_id in arxiv_ids if arxiv_id]
+    if not ordered_ids:
+        return []
+
+    def fetch_one(arxiv_id: str) -> Dict[str, object]:
+        fallback_category = ""
+        if source_categories:
+            fallback_category = (source_categories.get(arxiv_id) or [""])[0]
+        return fetch_abs_metadata(arxiv_id, fallback_category=fallback_category)
+
+    workers = min(ABS_FETCH_MAX_WORKERS, len(ordered_ids))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        entries = list(executor.map(fetch_one, ordered_ids))
+    return entries
+
+
+def fetch_abs_metadata(arxiv_id: str, fallback_category: str = "") -> Dict[str, object]:
+    arxiv_id = normalize_arxiv_id(arxiv_id)
+    html_url = ABS_URL_TEMPLATE.format(arxiv_id=urllib.parse.quote(arxiv_id))
+    html = fetch_text(html_url)
+    title = _first_meta_content(html, "citation_title") or _extract_labeled_block(html, "h1", "title")
+    summary = _first_meta_content(html, "citation_abstract") or _extract_abstract_block(html)
+    authors = _all_meta_content(html, "citation_author")
+    if not authors:
+        authors = _extract_abs_authors(html)
+    published = _first_meta_content(html, "citation_date")
+    if published:
+        published = published.replace("/", "-")
+    categories = _extract_subject_codes_from_html(html)
+    if fallback_category and fallback_category not in categories:
+        categories.insert(0, fallback_category)
+    pdf_url = _first_meta_content(html, "citation_pdf_url") or f"https://arxiv.org/pdf/{arxiv_id}"
+    return {
+        "id": arxiv_id,
+        "entry_id": f"http://arxiv.org/abs/{arxiv_id}",
+        "title": _clean_space(title.replace("Title:", "")) if title else arxiv_id,
+        "summary": _clean_space(summary.replace("Abstract:", "")) if summary else "",
+        "authors": authors,
+        "categories": categories,
+        "primary_category": categories[0] if categories else fallback_category or None,
+        "published": published or "",
+        "updated": published or "",
+        "comments": _extract_comments_block(html),
+        "html_url": html_url,
+        "pdf_url": pdf_url,
+        "metadata_source": "abs-page",
+    }
+
+
+def _html_unescape(text: str) -> str:
+    import html
+
+    return html.unescape(text or "")
+
+
+def _first_meta_content(html: str, name: str) -> str:
+    values = _all_meta_content(html, name)
+    return values[0] if values else ""
+
+
+def _all_meta_content(html: str, name: str) -> List[str]:
+    values = []
+    pattern = re.compile(
+        rf"<meta\b(?=[^>]*\bname=[\"']{re.escape(name)}[\"'])(?=[^>]*\bcontent=[\"'](?P<content>.*?)[\"'])[^>]*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for match in pattern.finditer(html):
+        value = _clean_space(_html_unescape(match.group("content")))
+        if value:
+            values.append(value)
+    return values
+
+
+def _extract_labeled_block(html: str, tag: str, class_name: str) -> str:
+    match = re.search(
+        rf"<{tag}\\b[^>]*class=[\"'][^\"']*{re.escape(class_name)}[^\"']*[\"'][^>]*>(.*?)</{tag}>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return _strip_tags(match.group(1)) if match else ""
+
+
+def _extract_abstract_block(html: str) -> str:
+    match = re.search(
+        r"<blockquote\b[^>]*class=[\"'][^\"']*abstract[^\"']*[\"'][^>]*>(.*?)</blockquote>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return _strip_tags(match.group(1)) if match else ""
+
+
+def _extract_abs_authors(html: str) -> List[str]:
+    match = re.search(
+        r"<div\b[^>]*class=[\"'][^\"']*authors[^\"']*[\"'][^>]*>(.*?)</div>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return []
+    return [_clean_space(_html_unescape(item)) for item in re.findall(r">([^<>]+)</a>", match.group(1)) if _clean_space(item)]
+
+
+def _extract_subject_codes_from_html(html: str) -> List[str]:
+    match = re.search(
+        r"<td\b[^>]*class=[\"'][^\"']*subjects[^\"']*[\"'][^>]*>(.*?)</td>|<span\b[^>]*class=[\"'][^\"']*primary-subject[^\"']*[\"'][^>]*>(.*?)</span>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    subject_html = " ".join(group for group in (match.groups() if match else []) if group)
+    if not subject_html:
+        subject_html = html
+    text = _strip_tags(subject_html)
+    codes = re.findall(r"\(([a-z-]+\.[A-Z]{2})\)", text)
+    return _dedupe(codes)
+
+
+def _extract_comments_block(html: str) -> str:
+    match = re.search(
+        r"<td\b[^>]*class=[\"'][^\"']*comments[^\"']*[\"'][^>]*>(.*?)</td>",
+        html,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return _strip_tags(match.group(1)) if match else ""
+
+
+def _dedupe(items: Iterable[str]) -> List[str]:
+    seen = set()
+    ordered = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return ordered
 
 
 def fetch_search_feed(
@@ -434,6 +591,66 @@ def _entry_text(entry: ET.Element, path: str) -> str:
 
 def _clean_space(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _strip_tags(html: str) -> str:
+    return _clean_space(re.sub(r"<[^>]+>", " ", html))
+
+
+def parse_new_list_entries(html: str, source_category: str) -> List[Dict[str, object]]:
+    new_html = _extract_section_html(html, "New submissions")
+    items: List[Dict[str, object]] = []
+    pattern = re.compile(r"<dt>\s*(?P<dt>.*?)</dt>\s*<dd>\s*(?P<dd>.*?)</dd>", re.DOTALL)
+    for match in pattern.finditer(new_html):
+        dt = match.group("dt")
+        dd = match.group("dd")
+        id_match = re.search(r'href\s*=\s*"/abs/([^"]+)"', dt)
+        if not id_match:
+            continue
+        arxiv_id = normalize_arxiv_id(id_match.group(1))
+        title_match = re.search(r"<div class='list-title[^']*'.*?</span>\s*(.*?)</div>", dd, re.DOTALL)
+        authors_match = re.search(r"<div class='list-authors'>(.*?)</div>", dd, re.DOTALL)
+        subjects_match = re.search(r"<div class='list-subjects'.*?</span>\s*(.*?)</div>", dd, re.DOTALL)
+        summary_match = re.search(r"<p class='mathjax'>\s*(.*?)</p>", dd, re.DOTALL)
+        comment_match = re.search(r"<div class='list-comments[^']*'.*?</span>\s*(.*?)</div>", dd, re.DOTALL)
+
+        subjects = _strip_tags(subjects_match.group(1)) if subjects_match else ""
+        categories = re.findall(r"\(([a-z-]+\.[A-Z]{2})\)", subjects)
+        if source_category not in categories:
+            categories.insert(0, source_category)
+
+        authors = re.findall(r">([^<>]+)</a>", authors_match.group(1)) if authors_match else []
+        items.append(
+            {
+                "id": arxiv_id,
+                "entry_id": f"http://arxiv.org/abs/{arxiv_id}",
+                "title": _strip_tags(title_match.group(1)) if title_match else arxiv_id,
+                "summary": _strip_tags(summary_match.group(1)) if summary_match else "",
+                "authors": [_clean_space(author) for author in authors if _clean_space(author)],
+                "categories": categories,
+                "primary_category": categories[0] if categories else source_category,
+                "published": "",
+                "updated": "",
+                "comments": _strip_tags(comment_match.group(1)) if comment_match else "",
+                "html_url": f"https://arxiv.org/abs/{arxiv_id}",
+                "pdf_url": f"https://arxiv.org/pdf/{arxiv_id}",
+                "source_categories": [source_category],
+                "metadata_source": "list-page",
+            }
+        )
+    return items
+
+
+def merge_list_page_entries(pages: Dict[str, ParsedListPage], html_by_category: Dict[str, str]) -> List[Dict[str, object]]:
+    by_id: Dict[str, Dict[str, object]] = {}
+    for category in pages:
+        for item in parse_new_list_entries(html_by_category[category], category):
+            existing = by_id.setdefault(str(item["id"]), item)
+            source_categories = list(existing.get("source_categories") or [])
+            if category not in source_categories:
+                source_categories.append(category)
+            existing["source_categories"] = source_categories
+    return list(by_id.values())
 
 
 def score_entry(entry: Dict[str, object], profile: Profile) -> Dict[str, object]:
@@ -535,7 +752,7 @@ def run_daily(profile: Profile, target_day: date) -> Dict[str, object]:
 
     source_categories: Dict[str, List[str]] = {}
     listing_date = None
-    parsed_pages = fetch_new_list_pages(profile.categories)
+    parsed_pages, html_by_category = fetch_new_list_pages_with_html(profile.categories)
     for category in profile.categories:
         parsed = parsed_pages[category]
         if listing_date is None:
@@ -543,7 +760,10 @@ def run_daily(profile: Profile, target_day: date) -> Dict[str, object]:
         for arxiv_id in parsed.new_submission_ids:
             source_categories.setdefault(arxiv_id, []).append(category)
 
-    entries = fetch_feed_by_id_list(list(source_categories.keys()))
+    try:
+        entries = fetch_abs_metadata_by_id_list(list(source_categories.keys()), source_categories)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout):
+        entries = merge_list_page_entries(parsed_pages, html_by_category)
     for entry in entries:
         entry["source_categories"] = source_categories.get(entry["id"], [])
     ranked = filter_and_sort_entries(entries, profile)
@@ -773,7 +993,7 @@ def write_outputs(result: Dict[str, object], output_dir: Path) -> Dict[str, obje
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="arxiv-find", add_help=True)
+    parser = argparse.ArgumentParser(prog="arxiv-collect", add_help=True)
     subparsers = parser.add_subparsers(dest="command")
 
     validate = subparsers.add_parser("validate-profile")
@@ -785,7 +1005,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--date")
     run.add_argument("--from-date")
     run.add_argument("--to-date")
-    run.add_argument("--output-dir", default="arxiv-find-output")
+    run.add_argument("--output-dir", default="arxiv-collect-output")
     run.add_argument("--keywords")
     run.add_argument("--categories")
     run.add_argument("--exclude-keywords")

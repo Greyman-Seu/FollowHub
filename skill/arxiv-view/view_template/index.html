@@ -36,9 +36,23 @@
             <option value="">All days</option>
           </select>
         </label>
+        <label class="field">
+          <span>Matched domain</span>
+          <select id="domainFilter">
+            <option value="">All domains</option>
+          </select>
+        </label>
         <label class="checkbox">
           <input id="favoriteOnly" type="checkbox">
           <span>Favorites only</span>
+        </label>
+        <label class="checkbox">
+          <input id="profileFavoriteOnly" type="checkbox">
+          <span>Profile favorites only</span>
+        </label>
+        <label class="checkbox">
+          <input id="hideIgnored" type="checkbox">
+          <span>Hide ignored</span>
         </label>
       </section>
 
@@ -59,13 +73,20 @@
           </div>
           <div class="score-row">
             <span class="score-badge hotness"></span>
+            <span class="score-badge recencyScore"></span>
             <span class="score-badge overallScore"></span>
+            <span class="score-badge profileFavorite"></span>
           </div>
           <p class="meta-line authors"></p>
           <p class="meta-line dates"></p>
           <p class="meta-line firstAffiliation"></p>
+          <p class="meta-line matchedDomain"></p>
           <div class="tags categories"></div>
+          <div class="tags matched-domain"></div>
           <div class="tags matched-keywords"></div>
+          <div class="tags favorite-keywords"></div>
+          <div class="tags context-hits"></div>
+          <div class="tags matched-excludes"></div>
           <p class="one-liner" id="oneLiner"></p>
           <div class="summary-block">
             <h3>中文总结</h3>

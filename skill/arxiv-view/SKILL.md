@@ -7,6 +7,12 @@ description: Use when the user wants a static HTML viewer for arXiv daily briefs
 
 Render `arxiv-find` outputs into a static directory bundle for browser-based review.
 
+## Invocation Model
+
+- This skill is meant to be installed into Codex / Claude and invoked by an agent.
+- The Python CLI is the internal tool surface used by the agent to build the viewer bundle.
+- The CLI is not intended to be the primary human-facing interface.
+
 ## Requirements Snapshot
 
 - Consume `arxiv-find` outputs only.
@@ -39,7 +45,7 @@ Accepted inputs:
 
 `arxiv-view` does not run retrieval itself and does not read profile YAML files.
 
-## Commands
+## Agent Tool Surface
 
 ```bash
 python3 /home/tenstep/workspace/followhub/skill/arxiv-view/arxiv_view.py help

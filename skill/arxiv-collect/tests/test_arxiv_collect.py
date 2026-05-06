@@ -9,22 +9,22 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SKILL_DIR = REPO_ROOT / "skill" / "arxiv-find"
-SCRIPT_PATH = SKILL_DIR / "arxiv_find.py"
+SKILL_DIR = REPO_ROOT / "skill" / "arxiv-collect"
+SCRIPT_PATH = SKILL_DIR / "arxiv_collect.py"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
 PROFILE_EXAMPLE_PATH = SKILL_DIR / "arxiv_profile.example.yaml"
 
 
 def load_skill_module():
     assert SCRIPT_PATH.exists(), f"missing skill script: {SCRIPT_PATH}"
-    spec = importlib.util.spec_from_file_location("followhub_arxiv_find", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("followhub_arxiv_collect", SCRIPT_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
 
 
-class ArxivFindSkillTests(unittest.TestCase):
+class ArxivCollectSkillTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.module = load_skill_module()
@@ -42,7 +42,7 @@ class ArxivFindSkillTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0)
-        self.assertIn("arxiv-find", result.stdout)
+        self.assertIn("arxiv-collect", result.stdout)
         self.assertIn("daily", result.stdout)
         self.assertIn("backfill", result.stdout)
         self.assertIn("search", result.stdout)
@@ -213,11 +213,10 @@ class ArxivFindSkillTests(unittest.TestCase):
 
     def test_skill_doc_records_requirements_and_design_boundary(self):
         content = SKILL_PATH.read_text(encoding="utf-8")
-        self.assertIn("Requirements Snapshot", content)
-        self.assertIn("Design Pattern", content)
+        self.assertIn("Raw arXiv acquisition", content)
+        self.assertIn("ArxivReader", content)
         self.assertIn("New submissions", content)
-        self.assertIn("arxiv-view", content)
-        self.assertIn("favorites", content)
+        self.assertIn("arxiv-filter", content)
 
     def test_example_profile_includes_arxivreader_style_favorites(self):
         content = PROFILE_EXAMPLE_PATH.read_text(encoding="utf-8")
@@ -350,6 +349,87 @@ class ArxivFindSkillTests(unittest.TestCase):
         titles = [item["title"] for item in items]
         self.assertIn("One", titles)
         self.assertIn("Three", titles)
+
+    def test_fetch_abs_metadata_extracts_arxiv_reader_style_fields(self):
+        original = self.module.fetch_text
+        try:
+            self.module.fetch_text = lambda url, timeout=45: textwrap.dedent(
+                """
+                <html>
+                  <head>
+                    <meta name="citation_title" content="Robot Policy Paper">
+                    <meta name="citation_author" content="Alice">
+                    <meta name="citation_author" content="Bob">
+                    <meta name="citation_abstract" content="This paper studies VLA robot manipulation.">
+                    <meta name="citation_date" content="2026/05/04">
+                    <meta name="citation_pdf_url" content="https://arxiv.org/pdf/2605.00001">
+                  </head>
+                  <body>
+                    <td class="subjects">Robotics (cs.RO); Artificial Intelligence (cs.AI)</td>
+                  </body>
+                </html>
+                """
+            )
+            item = self.module.fetch_abs_metadata("2605.00001v1", fallback_category="cs.RO")
+        finally:
+            self.module.fetch_text = original
+
+        self.assertEqual(item["id"], "2605.00001")
+        self.assertEqual(item["title"], "Robot Policy Paper")
+        self.assertEqual(item["authors"], ["Alice", "Bob"])
+        self.assertEqual(item["summary"], "This paper studies VLA robot manipulation.")
+        self.assertEqual(item["categories"], ["cs.RO", "cs.AI"])
+        self.assertEqual(item["published"], "2026-05-04")
+        self.assertEqual(item["metadata_source"], "abs-page")
+
+    def test_run_daily_uses_abs_metadata_not_export_api(self):
+        profile = self.module.Profile(categories=["cs.RO"], keywords=[])
+        original_pages = self.module.fetch_new_list_pages_with_html
+        original_abs = self.module.fetch_abs_metadata_by_id_list
+        original_feed = self.module.fetch_feed_by_id_list
+        original_enrich = self.module.enrich_result_payload
+        try:
+            self.module.fetch_new_list_pages_with_html = lambda categories: (
+                {
+                    "cs.RO": self.module.ParsedListPage(
+                        listing_date=date.today(),
+                        new_submission_ids=["2605.00001"],
+                        section_counts={"new": 1, "cross": 0, "replacement": 0},
+                    )
+                },
+                {"cs.RO": ""},
+            )
+            self.module.fetch_abs_metadata_by_id_list = lambda ids, source_categories=None: [
+                {
+                    "id": ids[0],
+                    "title": "Abs Hydrated Paper",
+                    "summary": "Robot manipulation.",
+                    "authors": ["Alice"],
+                    "categories": ["cs.RO"],
+                    "primary_category": "cs.RO",
+                    "published": "2026-05-04",
+                    "updated": "2026-05-04",
+                    "html_url": "https://arxiv.org/abs/2605.00001",
+                    "pdf_url": "https://arxiv.org/pdf/2605.00001",
+                    "metadata_source": "abs-page",
+                }
+            ]
+
+            def fail_feed(_ids):
+                raise AssertionError("daily should not call export API id_list hydrate")
+
+            self.module.fetch_feed_by_id_list = fail_feed
+            self.module.enrich_result_payload = lambda payload, profile=None: payload
+            result = self.module.run_daily(profile, date.today())
+        finally:
+            self.module.fetch_new_list_pages_with_html = original_pages
+            self.module.fetch_abs_metadata_by_id_list = original_abs
+            self.module.fetch_feed_by_id_list = original_feed
+            self.module.enrich_result_payload = original_enrich
+
+        self.assertEqual(result["raw_count"], 1)
+        self.assertEqual(result["entries"][0]["title"], "Abs Hydrated Paper")
+        self.assertEqual(result["entries"][0]["metadata_source"], "abs-page")
 
 
 if __name__ == "__main__":

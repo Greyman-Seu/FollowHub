@@ -57,6 +57,9 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["abstract_en"], entry["summary"])
         self.assertEqual(enriched["first_affiliation"], "Stanford University")
         self.assertEqual(enriched["one_liner_zh"], "该工作把短程 VLA 执行扩展到长程操作规划。")
+        self.assertEqual(enriched["author_meta"][0]["name"], "Isabella Liu")
+        self.assertTrue(enriched["author_meta"][0]["is_first_author"])
+        self.assertEqual(enriched["author_meta"][0]["affiliations"], ["Stanford University"])
         self.assertTrue(enriched["code_urls"])
         self.assertTrue(enriched["project_urls"])
         self.assertFalse(enriched["needs_agent_summary"])
@@ -73,11 +76,16 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["summary_cn"], "")
         self.assertEqual(enriched["one_liner_zh"], "")
         self.assertEqual(enriched["first_affiliation"], "")
+        self.assertEqual(enriched["author_meta"], [])
         self.assertEqual(enriched["code_urls"], [])
         self.assertEqual(enriched["project_urls"], [])
         self.assertEqual(enriched["citation_count"], 0)
-        self.assertEqual(enriched["overall_score"], 0)
+        self.assertGreaterEqual(enriched["overall_score"], 0)
         self.assertTrue(enriched["needs_agent_summary"])
+        self.assertTrue(enriched["needs_summary_cn_translation"])
+        self.assertTrue(enriched["needs_one_liner_zh"])
+        self.assertIn("summary_cn", enriched["agent_translation_prompt"])
+        self.assertIn("one_liner_zh", enriched["agent_one_liner_prompt"])
         self.assertIn("Example", enriched["agent_summary_prompt"])
         self.assertIn("A benchmark paper.", enriched["agent_summary_prompt"])
         self.assertIn("one_liner_zh", enriched["agent_summary_prompt"])
@@ -95,6 +103,60 @@ class ArxivEnrichSkillTests(unittest.TestCase):
 
         self.assertGreater(enriched["quality_score"], 0)
         self.assertGreater(enriched["overall_score"], 0)
+
+    def test_enrich_entry_calculates_relevance_from_shared_profile(self):
+        entry = {
+            "id": "2604.55555",
+            "title": "Vision-Language-Action Policies for Real Robot Manipulation",
+            "summary": "We study robot policy training recipes for embodied manipulation.",
+            "categories": ["cs.RO"],
+        }
+        scoring_profile = {
+            "categories": ["cs.RO"],
+            "keywords": ["vision-language-action", "robot policy"],
+            "exclude_keywords": ["medical"],
+            "topic_context": "real robot manipulation and embodied policy generalization",
+            "favorites": {
+                "enabled": True,
+                "keywords": ["VLA"],
+                "ignore_keywords": ["medical"],
+            },
+        }
+        enriched = self.module.enrich_entry(entry, scoring_profile=scoring_profile)
+
+        self.assertGreater(enriched["relevance_score"], 0)
+        self.assertEqual(enriched["matched_domain"], "default")
+        self.assertIn("vision-language-action", enriched["matched_keywords"])
+        self.assertIn("manipulation", " ".join(enriched["context_hits"]))
+        self.assertTrue(enriched["is_favorite"])
+
+    def test_load_scoring_profile_supports_evil_style_domains(self):
+        profile_yaml = """
+research_domains:
+  Robotics:
+    keywords:
+      - vision-language-action
+      - robot policy
+    arxiv_categories:
+      - cs.RO
+excluded_keywords:
+  - medical
+favorites:
+  enabled: true
+  keywords:
+    - VLA
+  ignore_keywords:
+    - Medical
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            profile_path = Path(tmpdir) / "profile.yaml"
+            profile_path.write_text(profile_yaml, encoding="utf-8")
+            profile = self.module.load_scoring_profile(profile_path)
+
+        self.assertIn("Robotics", profile["domains"])
+        self.assertEqual(profile["domains"]["Robotics"]["categories"], ["cs.RO"])
+        self.assertEqual(profile["excluded_keywords"], ["medical"])
+        self.assertTrue(profile["favorites_enabled"])
 
     def test_enrich_entry_derives_hot_score_from_citation_fields(self):
         entry = {
@@ -186,8 +248,8 @@ class ArxivEnrichSkillTests(unittest.TestCase):
                 "citationCount": 50,
                 "influentialCitationCount": 6,
                 "authors": [
-                    {"affiliations": [{"name": "Stanford University"}]},
-                    {"affiliations": [{"name": "Google DeepMind"}]},
+                    {"name": "Author A", "affiliations": [{"name": "Stanford University"}]},
+                    {"name": "Author B", "affiliations": [{"name": "Google DeepMind"}]},
                 ],
             },
             "relevance_score": 2.0,
@@ -199,6 +261,10 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["influential_citation_count"], 6)
         self.assertEqual(enriched["first_affiliation"], "Stanford University")
         self.assertIn("Google DeepMind", enriched["affiliations"])
+        self.assertEqual(enriched["author_meta"][0]["name"], "Author A")
+        self.assertEqual(enriched["author_meta"][0]["affiliations"], ["Stanford University"])
+        self.assertEqual(enriched["author_meta"][1]["name"], "Author B")
+        self.assertEqual(enriched["author_meta"][1]["affiliations"], ["Google DeepMind"])
 
     def test_enrich_entry_uses_local_html_and_pdf_text_for_link_extraction(self):
         entry = {
@@ -221,8 +287,8 @@ class ArxivEnrichSkillTests(unittest.TestCase):
                 "citationCount": 33,
                 "influentialCitationCount": 5,
                 "authors": [
-                    {"affiliations": [{"name": "CMU"}]},
-                    {"affiliations": [{"name": "Google Research"}]},
+                    {"name": "First Author", "affiliations": [{"name": "CMU"}]},
+                    {"name": "Second Author", "affiliations": [{"name": "Google Research"}]},
                 ],
             }
             entry = {
@@ -244,6 +310,20 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["influential_citation_count"], 5)
         self.assertEqual(enriched["first_affiliation"], "CMU")
         self.assertIn("Google Research", enriched["affiliations"])
+        self.assertEqual(enriched["author_meta"][0]["name"], "First Author")
+        self.assertEqual(enriched["author_meta"][0]["affiliations"], ["CMU"])
+
+    def test_mark_corresponding_authors_requires_explicit_correspondence_signal(self):
+        author_meta = [
+            {"name": "Alice Smith", "affiliations": ["Stanford University"], "is_first_author": True, "is_corresponding_author": False},
+            {"name": "Bob Chen", "affiliations": ["CMU"], "is_first_author": False, "is_corresponding_author": False},
+        ]
+        marked = self.module.mark_corresponding_authors(
+            author_meta,
+            "Corresponding author: Bob Chen. Contact: bob@example.com",
+        )
+        self.assertFalse(marked[0]["is_corresponding_author"])
+        self.assertTrue(marked[1]["is_corresponding_author"])
 
     def test_enrich_entry_skips_external_fetch_without_api_key(self):
         original_fetch = self.module.fetch_semantic_scholar_metadata
@@ -306,6 +386,59 @@ class ArxivEnrichSkillTests(unittest.TestCase):
             self.assertIn("abstract_en", enriched["entries"][0])
             self.assertTrue(enriched["entries"][0]["code_urls"])
 
+    def test_cli_enriches_json_file_with_profile_scoring(self):
+        payload = {
+            "mode": "search",
+            "count": 1,
+            "query": "robot policy",
+            "entries": [
+                {
+                    "id": "2604.45454",
+                    "title": "Robot Policy CLI Example",
+                    "summary": "A vision-language-action paper for embodied control.",
+                    "categories": ["cs.RO"],
+                    "published": "2026-04-29T10:00:00Z",
+                }
+            ],
+        }
+        profile_yaml = """
+categories:
+  - cs.RO
+keywords:
+  - vision-language-action
+  - robot policy
+favorites:
+  enabled: true
+  keywords:
+    - VLA
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.json"
+            output_path = Path(tmpdir) / "output.json"
+            profile_path = Path(tmpdir) / "profile.yaml"
+            input_path.write_text(self.module.json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            profile_path.write_text(profile_yaml, encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "enrich",
+                    "--input",
+                    str(input_path),
+                    "--profile",
+                    str(profile_path),
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            enriched = self.module.json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertGreater(enriched["entries"][0]["relevance_score"], 0)
+            self.assertEqual(enriched["entries"][0]["matched_domain"], "default")
+
     def test_main_enriches_ids_argument(self):
         original = self.module.fetch_entries_by_ids
         try:
@@ -350,6 +483,10 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         }
         enriched = self.module.enrich_entry(entry)
         self.assertFalse(enriched["needs_agent_summary"])
+        self.assertFalse(enriched["needs_summary_cn_translation"])
+        self.assertFalse(enriched["needs_one_liner_zh"])
+        self.assertEqual(enriched["agent_translation_prompt"], "")
+        self.assertEqual(enriched["agent_one_liner_prompt"], "")
         self.assertEqual(enriched["agent_summary_prompt"], "")
 
     def test_resolve_semantic_scholar_api_key_prefers_argument_then_env(self):

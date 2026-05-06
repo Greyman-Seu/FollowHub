@@ -7,7 +7,13 @@ description: Use when uploading, syncing, listing, or deleting files in FollowHu
 
 Use this skill when an agent needs direct file operations against FollowHub's Cloudflare R2 bucket.
 
-## Preferred Entry Point
+## Invocation Model
+
+- This skill is meant to be installed into Codex / Claude and invoked by an agent.
+- The bundled CLI helper is the internal tool surface used by the agent for R2 operations.
+- The CLI is not intended to be a separate human-facing product interface.
+
+## Preferred Agent Entry Point
 
 Prefer the bundled helper script over handwritten shell snippets:
 
@@ -23,6 +29,7 @@ Use raw `rclone` directly only when the helper script does not cover the operati
 - Do not build another uploader first.
 - Prefer `copyto`, `copy`, `sync`, `lsjson`, `deletefile`, `delete`.
 - Treat `purge` as destructive and require explicit user approval before running it.
+- In normal Follow daily publishing, do not use `delete`, `deletefile`, or `purge`.
 
 ## Config Source
 

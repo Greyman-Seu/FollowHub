@@ -22,8 +22,13 @@
       "hot_score": 2.4,
       "overall_score": 4.6,
       "relevance_score": 3.55,
+      "recency_score": 2.2,
+      "matched_domain": "Robotics",
       "matched_keywords": ["VLA", "vision-language-action"],
       "favorite_keywords": ["VLA"],
+      "favorite_ignores": [],
+      "is_favorite": true,
+      "is_ignored": false,
       "code_urls": ["https://github.com/example/loho-manip"],
       "project_urls": ["https://www.liuisabella.com/LoHoManip"],
       "context_hits": ["manipulation"]
@@ -40,9 +45,15 @@
       "updated": "2026-04-23T03:17:50Z",
       "pdf_url": "https://arxiv.org/pdf/2604.21241v1",
       "html_url": "https://arxiv.org/abs/2604.21241v1",
+      "recency_score": 1.4,
       "relevance_score": 2.35,
+      "matched_domain": "Robotics",
       "matched_keywords": ["VLA"],
       "favorite_keywords": ["VLA"],
+      "favorite_ignores": ["Medical"],
+      "matched_excludes": ["survey"],
+      "is_favorite": false,
+      "is_ignored": true,
       "context_hits": []
     }
   ]

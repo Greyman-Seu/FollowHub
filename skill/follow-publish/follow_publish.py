@@ -33,6 +33,7 @@ Usage:
 """
 
 SOURCE_ORDER = ("arxiv", "wechat", "x", "bilibili")
+RECENT_SOURCE_DAYS = 30
 IMPORTANCE_WEIGHT = {"high": 3, "medium": 2, "low": 1}
 UNCATEGORIZED_DOMAIN = {"slug": "uncategorized", "name": "Uncategorized"}
 DEFAULT_DOMAIN_CONFIG = {
@@ -474,12 +475,46 @@ def build_source_files(digests: Sequence[Dict[str, Any]]) -> Dict[str, Dict[str,
     files = {}
     for source in SOURCE_ORDER:
         items = [item for item in rows if item["source_type"] == source]
-        files[source] = {
+        files[f"sources/{source}.json"] = {
             "source": source,
             "title": normalize_source_name(source),
             "item_count": len(items),
             "items": items,
         }
+        latest_date = items[0]["date"] if items else ""
+        latest_time = datetime.fromisoformat(f"{latest_date}T00:00:00") if latest_date else None
+        if latest_time is None:
+            recent_items = []
+        else:
+            recent_items = []
+            for item in items:
+                item_time = datetime.fromisoformat(f"{item['date']}T00:00:00")
+                days_diff = (latest_time - item_time).days
+                if days_diff < RECENT_SOURCE_DAYS:
+                    recent_items.append(item)
+        files[f"sources/{source}-recent.json"] = {
+            "source": source,
+            "title": normalize_source_name(source),
+            "scope": "recent",
+            "window_days": RECENT_SOURCE_DAYS,
+            "item_count": len(recent_items),
+            "items": recent_items,
+        }
+        month_buckets: Dict[str, List[Dict[str, Any]]] = {}
+        for item in items:
+            month = str(item.get("date") or "")[:7]
+            if not month:
+                continue
+            month_buckets.setdefault(month, []).append(item)
+        for month, month_items in month_buckets.items():
+            files[f"sources/{source}-{month}.json"] = {
+                "source": source,
+                "title": normalize_source_name(source),
+                "scope": "archive",
+                "month": month,
+                "item_count": len(month_items),
+                "items": month_items,
+            }
     return files
 
 
@@ -519,8 +554,8 @@ def write_artifacts(digests: Sequence[Dict[str, Any]], output_dir: Path) -> Dict
     save_json(output_dir / "domains.json", domains_file)
     for digest in digests:
         save_json(output_dir / "daily" / f"{digest['date']}.json", digest)
-    for source, payload in source_files.items():
-        save_json(output_dir / "sources" / f"{source}.json", payload)
+    for relative_path, payload in source_files.items():
+        save_json(output_dir / relative_path, payload)
     return {
         "manifest": str(output_dir / "manifest.json"),
         "latest": str(output_dir / "latest.json"),
@@ -686,15 +721,15 @@ def publish_daily_command(
     include_paths = None
     if not allow_historical:
         include_paths = [
-            f"daily/{incoming['date']}.json",
             "domains.json",
             "latest.json",
             "manifest.json",
-            "sources/arxiv.json",
-            "sources/bilibili.json",
-            "sources/wechat.json",
-            "sources/x.json",
+            f"daily/{incoming['date']}.json",
         ]
+        include_paths.extend(
+            path.relative_to(output_dir).as_posix()
+            for path in sorted((output_dir / "sources").glob("*.json"))
+        )
     uploaded = upload_artifacts_with_rcli(
         rcli_module,
         config_path,

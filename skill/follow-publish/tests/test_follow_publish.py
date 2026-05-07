@@ -86,6 +86,8 @@ class FollowPublishSkillTests(unittest.TestCase):
             self.assertTrue((Path(tmpdir) / "latest.json").exists())
             self.assertTrue((Path(tmpdir) / "daily" / "2026-05-02.json").exists())
             self.assertTrue((Path(tmpdir) / "sources" / "arxiv.json").exists())
+            self.assertTrue((Path(tmpdir) / "sources" / "arxiv-recent.json").exists())
+            self.assertTrue((Path(tmpdir) / "sources" / "arxiv-2026-05.json").exists())
             manifest = json.loads((Path(tmpdir) / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["latest_date"], "2026-05-02")
             self.assertEqual(manifest["sources"][0]["source"], "arxiv")

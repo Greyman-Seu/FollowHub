@@ -1,0 +1,95 @@
+# FollowHub unified config template
+#
+# Recommended usage:
+# 1. cp followhub.example.yaml followhub.yaml
+# 2. Fill secrets and local paths
+# 3. export FOLLOWHUB_CONFIG="$PWD/followhub.yaml"
+
+arxiv:
+  categories:
+    - cs.RO
+    - cs.AI
+
+  keywords:
+    - vision-language-action
+    - robot policy
+
+  exclude_keywords:
+    - survey
+    - medical
+
+  logic: AND
+
+  semantic_scholar_api_key: ""
+
+  topic_context: |
+    Recent work focuses on real robot manipulation, VLA training recipes,
+    data curation, and embodied policy generalization.
+
+  filter_prompt:
+    focus_definition: |
+      重点关注机器人领域里的操作 policy 算法，主要包含 VLA、WAM（世界模型）、VA 等算法方向，
+      也包含这些方向的算法级加速方案。模型加速只看模型/算法侧，不看系统加速方向。
+    include_rules:
+      - 机器人 manipulation / control / locomotion 的 policy learning
+      - VLA / VA / visuomotor policy
+      - 面向机器人控制的 world model / world-action model
+      - 机器人操作数据引擎、训练数据生成、策略训练 pipeline
+      - 面向上述模型与策略的算法级效率优化，如 distillation、compression、sampling、planning
+    exclude_rules:
+      - 泛 LLM reasoning，与机器人控制无直接关系
+      - 泛 offline RL / game theory / multi-agent theory，与机器人操作无直接关系
+      - 系统或基础设施加速，而非模型/算法加速
+      - 医疗、生物、蛋白、化学等非机器人主线任务
+      - 宽泛 survey，除非直接面向 robot learning / world model / policy training
+    positive_examples:
+      - Lucid-XR: An Extended-Reality Data Engine for Robotic Manipulation
+      - Being-H0.7: A Latent World-Action Model from Egocentric Videos
+      - E^2DT: Efficient and Effective Decision Transformer with Experience-Aware Sampling for Robotic Manipulation
+    negative_examples:
+      - ResRL: Boosting LLM Reasoning via Negative Sample Projection Residual Reinforcement Learning
+      - Pessimism-Free Offline Learning in General-Sum Games via KL Regularization
+      - Instance-Aware Parameter Configuration in Bilevel Late Acceptance Hill Climbing for the Electric Capacitated Vehicle Routing Problem
+
+  favorites:
+    enabled: true
+    keywords:
+      - VLA
+    ignore_keywords:
+      - Medical
+
+  daily:
+    new_submissions_only: true
+    max_results_per_day: 50
+
+  backfill:
+    generate_overview: true
+
+  search:
+    max_results: 50
+
+follow:
+  domains:
+    llm-vlm:
+      name: LLM/VLM
+      description: 大模型、多模态大模型，包含推理、训练等。
+    physical-embodied-intelligence:
+      name: Physical/Embodied Intelligence
+      description: 物理/具身智能方向。
+    aigc:
+      name: AIGC
+      description: 图像、视频与语音生成方向。
+    agent:
+      name: Agent
+      description: 工具调用、规划执行、工作流编排与智能体系统设计。
+
+publish:
+  remote_prefix: follow
+  page_data_dir: submodules/page_github/src/data/generated/follow
+
+r2:
+  account_id: 55089addaf72336be3109073072340fd
+  access_key_id: your_r2_access_key_id
+  secret_access_key: your_r2_secret_access_key
+  bucket: followhub
+  public_base_url: https://followhub.tenstep.top

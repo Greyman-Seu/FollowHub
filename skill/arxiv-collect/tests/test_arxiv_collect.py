@@ -286,6 +286,8 @@ class ArxivCollectSkillTests(unittest.TestCase):
         ranked = self.module.filter_and_sort_entries(entries, profile)
         ids = [item["id"] for item in ranked]
         self.assertIn("a", ids)
+        candidate = next(item for item in ranked if item["id"] == "a")
+        self.assertTrue(candidate["prefilter_candidate"])
 
     def test_fetch_new_list_pages_preserves_category_mapping(self):
         original = self.module.fetch_new_list_page

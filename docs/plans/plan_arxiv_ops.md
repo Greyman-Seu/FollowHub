@@ -9,6 +9,7 @@ The production chain is:
 ```text
 arxiv-daily
   -> arxiv-collect
+  -> title-prefilter
   -> arxiv-filter
   -> arxiv-enrich
   -> follow-publish
@@ -24,13 +25,15 @@ Daily means today's category-wide `New submissions`.
 Flow:
 
 1. Use `arxiv-collect` to collect raw daily papers.
-2. Build filter tasks from the raw daily JSON.
-3. Use `arxiv-filter` subagents to decide `include_in_follow`, `domains`, `one_liner_zh`, `summary_cn`, and `reason`.
-4. If a selected paper still lacks `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for that paper first.
-5. Enrich only selected papers with `arxiv-enrich`.
-6. Merge filter and enrich outputs into a Follow daily digest.
-7. Publish with `follow-publish`.
-8. Verify R2/page JSON with `rcli` or public URLs.
+2. Build title-prefilter tasks from the raw daily JSON.
+3. Use title-prefilter subagents to produce `keep / drop / uncertain`.
+4. Build full filter tasks from `keep + uncertain`.
+5. Use `arxiv-filter` subagents to decide `include_in_follow`, `domains`, `one_liner_zh`, `summary_cn`, and `reason`.
+6. If a selected paper still lacks `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for that paper first.
+7. Enrich only selected papers with `arxiv-enrich`.
+8. Merge filter and enrich outputs into a Follow daily digest.
+9. Publish with `follow-publish`.
+10. Verify R2/page JSON with `rcli` or public URLs.
 
 Raw daily should be comparable to `ArxivReader` category daily semantics. For `cs.RO`, `cs.AI`, and `cs.LG`, this may be more than 100 papers.
 
@@ -64,6 +67,8 @@ Validate in layers:
   - raw count is category-wide
   - configured categories are present
 - Filter:
+  - title-prefilter should only remove obviously irrelevant papers
+  - uncertain papers must continue to full filter
   - every raw item has an include/exclude decision
   - selected papers match the user's focus
   - excluded papers have clear reasons

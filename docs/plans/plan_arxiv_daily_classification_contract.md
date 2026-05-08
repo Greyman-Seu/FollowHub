@@ -9,14 +9,65 @@ Define the contract between `arxiv-daily` and `arxiv-filter` workers.
 ## Flow
 
 1. `arxiv-collect` produces raw daily/backfill JSON.
-2. The main agent builds `filter_tasks.json` from raw papers.
-3. The main agent spawns `arxiv-filter` workers in batches.
-4. Workers return JSON fragments.
-5. The main agent merges fragments into `filter_results.json`.
-6. Selected papers are enriched with `arxiv-enrich`.
-7. `follow-publish` publishes the final digest.
+2. The main agent builds `title_prefilter_tasks.json` from raw papers.
+3. The main agent spawns title-prefilter workers in batches.
+4. Workers return `prefilter_results.json`.
+5. The main agent builds `filter_tasks.json` from `keep + uncertain` papers.
+6. The main agent spawns `arxiv-filter` workers in batches.
+7. Workers return JSON fragments.
+8. The main agent merges fragments into `filter_results.json`.
+9. Selected papers are enriched with `arxiv-enrich`.
+10. `follow-publish` publishes the final digest.
 
 ## Input Task File
+
+Path:
+
+- `title_prefilter_tasks.json`
+
+Shape:
+
+```json
+{
+  "input_path": "/path/to/arxiv-collect-output.json",
+  "item_count": 137,
+  "worker_plan": {
+    "mode": "subagent",
+    "worker_skill": "title-prefilter",
+    "group_size": 10,
+    "worker_count": 14,
+    "groups": []
+  }
+}
+```
+
+Each task should include:
+
+- `arxiv_id`
+- `title`
+- `categories`
+
+## Output Prefilter Result File
+
+Path:
+
+- `prefilter_results.json`
+
+Shape:
+
+```json
+{
+  "items": [
+    {
+      "arxiv_id": "2605.xxxxx",
+      "decision": "keep",
+      "reason": "标题直接属于 VLA / 机器人操作主线。"
+    }
+  ]
+}
+```
+
+## Input Full Filter Task File
 
 Path:
 

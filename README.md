@@ -16,6 +16,9 @@
 - `arxiv-filter`
   - subagent worker skill
   - 负责 include/exclude、domain、一句话中文总结、中文摘要、原因
+- `arxiv-title-prefilter`
+  - title/category-only fast worker
+  - 负责 `keep / drop / uncertain` 的第一轮粗筛
 - `arxiv-enrich`
   - 面向入选 arXiv 论文的二次补全
   - 负责作者、单位、热度、链接、分数字段的稳定 contract
@@ -54,6 +57,7 @@
 - agent 读取 `skill/arxiv-daily/SKILL.md`
 - agent 读取 `skill/arxiv-collect/SKILL.md`
 - agent 读取 `skill/arxiv-filter/SKILL.md`
+- agent 读取 `skill/arxiv-title-prefilter/SKILL.md`
 - agent 读取 `skill/arxiv-enrich/SKILL.md`
 - agent 读取 `skill/arxiv-view/SKILL.md`
 - agent 读取 `skill/arxiv-fig/SKILL.md`
@@ -90,10 +94,11 @@ CLI 仍然保留，原因是：
 推荐流程：
 
 1. `arxiv-collect` 获取全量 raw daily/backfill。
-2. 主 agent 按 `arxiv-filter` 的契约拆 subagent。
-3. `arxiv-filter` 产出 `filter_results.json`。
-4. 主 agent 只对入选论文调用 `arxiv-enrich`。
-5. `follow-publish` 发布到 R2/page。
+2. 主 agent 先按 `arxiv-title-prefilter` 做 title/category-only 粗筛。
+3. `keep + uncertain` 再进入 `arxiv-filter`。
+4. `arxiv-filter` 产出 `filter_results.json`。
+5. 主 agent 只对入选论文调用 `arxiv-enrich`。
+6. `follow-publish` 发布到 R2/page。
 
 ### `arxiv-collect`
 
@@ -148,6 +153,21 @@ python3 skill/arxiv-collect/arxiv_collect.py run --mode backfill --profile follo
   - `one_liner_zh`
   - `summary_cn`
   - `reason`
+
+### `arxiv-title-prefilter`
+
+路径：
+
+- `skill/arxiv-title-prefilter/SKILL.md`
+
+当前定位：
+
+- title/category-only 的第一轮粗筛 worker
+- 输出：
+  - `keep`
+  - `drop`
+  - `uncertain`
+- `uncertain` 默认进入下一轮 `arxiv-filter`
 
 ### `arxiv-enrich`
 

@@ -7,10 +7,11 @@ This note defines the intended boundaries between the current skills and the nex
 The daily arXiv flow should be:
 
 1. `arxiv-collect` collects raw papers.
-2. `arxiv-daily` fans out `arxiv-filter` work to subagents.
-3. `arxiv-filter` workers decide inclusion, domains, and summaries.
-4. Selected papers are enriched in parallel through `arxiv-enrich`.
-5. `follow-publish` packages and publishes the final shortlist.
+2. `arxiv-daily` fans out `arxiv-title-prefilter` work to subagents.
+3. `arxiv-title-prefilter` marks `keep / drop / uncertain`.
+4. `arxiv-filter` workers decide final inclusion, domains, and summaries.
+5. Selected papers are enriched in parallel through `arxiv-enrich`.
+6. `follow-publish` packages and publishes the final shortlist.
 
 Rules may still create cheap metadata such as ordering hints, but rules should not decide the final Follow shortlist.
 
@@ -82,11 +83,14 @@ Target boundary:
 Expected agent-native flow:
 
 1. Use `arxiv-collect` to collect daily raw papers.
-2. Read `filter_tasks.json`.
-3. Spawn `arxiv-filter` subagents in batches.
-4. Merge subagent JSON into `filter_results.json`.
-5. Run `arxiv-enrich` only for selected papers.
-6. Use `follow-publish` to publish the merged digest.
+2. Build `title_prefilter_tasks.json`.
+3. Spawn `arxiv-title-prefilter` subagents in batches.
+4. Merge subagent JSON into `prefilter_results.json`.
+5. Build `filter_tasks.json` from `keep + uncertain`.
+6. Spawn `arxiv-filter` subagents in batches.
+7. Merge subagent JSON into `filter_results.json`.
+8. Run `arxiv-enrich` only for selected papers.
+9. Use `follow-publish` to publish the merged digest.
 
 The filter result should include:
 
@@ -106,6 +110,22 @@ The filter result should include:
   ]
 }
 ```
+
+## arxiv-title-prefilter
+
+Current role:
+
+- Fast title/category-only screening worker.
+
+Target boundary:
+
+- It should only decide:
+  - `keep`
+  - `drop`
+  - `uncertain`
+- It should not decide the final Follow shortlist.
+- `uncertain` should advance to full `arxiv-filter`.
+- It exists to reduce token cost while preserving recall.
 
 ## follow-publish
 

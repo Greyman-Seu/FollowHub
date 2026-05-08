@@ -51,6 +51,24 @@ STOPWORDS = {
     "with",
     "work",
 }
+PREFILTER_FOCUS_TERMS = (
+    "manipulation",
+    "vision-language-action",
+    "world model",
+    "world-action",
+    "visuomotor",
+    "robot policy",
+    "policy learning",
+    "locomotion",
+    "planning",
+    "model predictive control",
+    "decision transformer",
+    "diffusion policy",
+    "behavior cloning",
+    "tactile",
+    "assembly",
+    "affordance",
+)
 HELP_TEXT = """\
 arxiv-find: Hybrid arXiv retrieval for daily briefs, backfills, and search.
 
@@ -473,8 +491,21 @@ def score_entry(entry: Dict[str, object], profile: Profile) -> Dict[str, object]
     context_hits, context_score = context_feedback(entry, profile.topic_context)
     score += context_score
     categories = set(entry.get("categories") or [])
-    if any(category in categories for category in profile.categories):
+    has_profile_category = any(category in categories for category in profile.categories)
+    has_robotics_category = "cs.RO" in categories
+    if has_profile_category:
         score += 0.4
+
+    has_focus_term = any(term in combined for term in PREFILTER_FOCUS_TERMS)
+    prefilter_candidate = (
+        not excluded
+        and (
+            is_favorite
+            or has_robotics_category
+            or has_profile_category
+            or has_focus_term
+        )
+    )
 
     scored = dict(entry)
     scored["matched_keywords"] = matched_keywords
@@ -485,7 +516,8 @@ def score_entry(entry: Dict[str, object], profile: Profile) -> Dict[str, object]
     scored["is_favorite"] = is_favorite
     scored["is_ignored"] = is_ignored
     scored["relevance_score"] = round(score, 2)
-    scored["included"] = not excluded and (bool(matched_keywords) or not profile.keywords)
+    scored["prefilter_candidate"] = prefilter_candidate
+    scored["included"] = prefilter_candidate
     return scored
 
 

@@ -20,11 +20,12 @@ When the user says something like:
 the agent should run the full pipeline:
 
 1. Collect raw arXiv papers.
-2. Filter raw papers with subagents.
-3. Enrich selected papers with subagents.
-4. Merge results into a Follow digest.
-5. Publish the digest to R2/page.
-6. Verify the published JSON and page source.
+2. Run title-level prefilter with subagents.
+3. Run full-paper filter with subagents.
+4. Enrich selected papers with subagents.
+5. Merge results into a Follow digest.
+6. Publish the digest to R2/page.
+7. Verify the published JSON and page source.
 
 ## Skill Boundaries
 
@@ -34,6 +35,10 @@ the agent should run the full pipeline:
 - `arxiv-filter`
   - worker skill for include/exclude, domains, one-line Chinese summary, Chinese summary, and reason
   - accepts one paper or a small batch
+- `arxiv-title-prefilter`
+  - worker step owned by `arxiv-daily`
+  - title/category-only fast screening
+  - outputs `keep` / `drop` / `uncertain`
 - `arxiv-enrich`
   - worker skill for selected paper details
   - authors, affiliations, links, code/project URLs, English abstract normalization, score fields
@@ -50,14 +55,17 @@ the agent should run the full pipeline:
    - otherwise use repo-local `followhub.yaml`
 2. Use `arxiv-collect` to run daily raw collection.
 3. Confirm raw count is category-wide and comparable to `ArxivReader` semantics.
-4. Build filter tasks from the raw daily JSON.
-5. Spawn `arxiv-filter` subagents in batches.
-6. Merge all worker outputs into `filter_results.json`.
-7. If any selected paper still has missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for those papers first.
-8. Use the selected IDs from `filter_results.json` to run `arxiv-enrich` workers.
-9. Merge filter and enrich results into a Follow daily digest.
-10. Use `follow-publish` to publish to the configured R2 prefix, normally `follow/`.
-11. Verify:
+4. Build title-prefilter tasks from the raw daily JSON.
+5. Spawn title-prefilter subagents in batches using only title/category information.
+6. Merge title-prefilter outputs into `prefilter_results.json`.
+7. Build full filter tasks from papers marked `keep` or `uncertain`.
+8. Spawn `arxiv-filter` subagents in batches.
+9. Merge all worker outputs into `filter_results.json`.
+10. If any selected paper still has missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for those papers first.
+11. Use the selected IDs from `filter_results.json` to run `arxiv-enrich` workers.
+12. Merge filter and enrich results into a Follow daily digest.
+13. Use `follow-publish` to publish to the configured R2 prefix, normally `follow/`.
+14. Verify:
     - `follow/latest.json`
     - `follow/daily/YYYY-MM-DD.json`
     - `follow/sources/arxiv.json`
@@ -76,10 +84,27 @@ Subagent orchestration belongs here, not in worker skills.
 
 Recommended defaults:
 
-- 1-5 raw papers: the main agent may run `arxiv-filter` directly.
-- More than 5 raw papers: spawn `arxiv-filter` workers in groups of 3-5 papers.
+- 1-20 raw papers: the main agent may skip title-prefilter and run `arxiv-filter` directly.
+- More than 20 raw papers: spawn title-prefilter workers first.
+- Title-prefilter workers should review title + category only and output `keep` / `drop` / `uncertain`.
+- `keep` and `uncertain` should both advance to full `arxiv-filter`.
+- More than 5 full-filter papers: spawn `arxiv-filter` workers in groups of 3-5 papers.
 - Enrich only selected papers after filtering.
 - Do not enrich the full raw daily set.
+
+Each title-prefilter worker should return:
+
+```json
+{
+  "items": [
+    {
+      "arxiv_id": "2605.xxxxx",
+      "decision": "keep",
+      "reason": "标题直接属于 VLA / 机器人操作主线。"
+    }
+  ]
+}
+```
 
 Each `arxiv-filter` worker returns:
 

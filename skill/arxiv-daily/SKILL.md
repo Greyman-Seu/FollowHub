@@ -55,17 +55,18 @@ the agent should run the full pipeline:
    - otherwise use repo-local `followhub.yaml`
 2. Use `arxiv-collect` to run daily raw collection.
 3. Confirm raw count is category-wide and comparable to `ArxivReader` semantics.
-4. Build title-prefilter tasks from the raw daily JSON.
-5. Spawn title-prefilter subagents in batches using only title/category information.
-6. Merge title-prefilter outputs into `prefilter_results.json`.
-7. Build full filter tasks from papers marked `keep` or `uncertain`.
-8. Spawn `arxiv-filter` subagents in batches.
-9. Merge all worker outputs into `filter_results.json`.
-10. If any selected paper still has missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for those papers first.
-11. Use the selected IDs from `filter_results.json` to run `arxiv-enrich` workers.
-12. Merge filter and enrich results into a Follow daily digest.
-13. Use `follow-publish` to publish to the configured R2 prefix, normally `follow/`.
-14. Verify:
+4. If the run targets "today" but `listing_date != today`, do not publish a new daily by default. Treat this as "arXiv has not rolled over yet" unless the user explicitly asks to reuse the latest listing.
+5. Build title-prefilter tasks from the raw daily JSON.
+6. Spawn title-prefilter subagents in batches using only title/category information.
+7. Merge title-prefilter outputs into `prefilter_results.json`.
+8. Build full filter tasks from papers marked `keep` or `uncertain`.
+9. Spawn `arxiv-filter` subagents in batches.
+10. Merge all worker outputs into `filter_results.json`.
+11. If any selected paper still has missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for those papers first.
+12. Use the selected IDs from `filter_results.json` to run `arxiv-enrich` workers.
+13. Merge filter and enrich results into a Follow daily digest.
+14. Use `follow-publish` to publish to the configured R2 prefix, normally `follow/`.
+15. Verify:
     - `follow/latest.json`
     - `follow/daily/YYYY-MM-DD.json`
     - `follow/sources/arxiv.json`
@@ -131,6 +132,7 @@ Each `arxiv-filter` worker returns:
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
 - If Chinese summary fields still remain missing after retry, the paper may still be published, but this should be treated as an incomplete follow item and tracked for later repair.
+- If `listing_date != today` for a "today" run, default behavior is to skip publish rather than duplicate the previous listing.
 - Do not use static keyword rules as the final Follow decision.
 - R2 deletion and purge are not part of the daily path.
 

@@ -25,15 +25,16 @@ Daily means today's category-wide `New submissions`.
 Flow:
 
 1. Use `arxiv-collect` to collect raw daily papers.
-2. Build title-prefilter tasks from the raw daily JSON.
-3. Use title-prefilter subagents to produce `keep / drop / uncertain`.
-4. Build full filter tasks from `keep + uncertain`.
-5. Use `arxiv-filter` subagents to decide `include_in_follow`, `domains`, `one_liner_zh`, `summary_cn`, and `reason`.
-6. If a selected paper still lacks `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for that paper first.
-7. Enrich only selected papers with `arxiv-enrich`.
-8. Merge filter and enrich outputs into a Follow daily digest.
-9. Publish with `follow-publish`.
-10. Verify R2/page JSON with `rcli` or public URLs.
+2. If `listing_date != today`, default behavior is to stop before publish because arXiv `new` has not rolled over yet.
+3. Build title-prefilter tasks from the raw daily JSON.
+4. Use title-prefilter subagents to produce `keep / drop / uncertain`.
+5. Build full filter tasks from `keep + uncertain`.
+6. Use `arxiv-filter` subagents to decide `include_in_follow`, `domains`, `one_liner_zh`, `summary_cn`, and `reason`.
+7. If a selected paper still lacks `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for that paper first.
+8. Enrich only selected papers with `arxiv-enrich`.
+9. Merge filter and enrich outputs into a Follow daily digest.
+10. Publish with `follow-publish`.
+11. Verify R2/page JSON with `rcli` or public URLs.
 
 Raw daily should be comparable to `ArxivReader` category daily semantics. For `cs.RO`, `cs.AI`, and `cs.LG`, this may be more than 100 papers.
 
@@ -64,6 +65,7 @@ Validate in layers:
 - Collection:
   - date is correct
   - source is `list-new` for daily
+  - `listing_date` should match the intended publish date for a true same-day run
   - raw count is category-wide
   - configured categories are present
 - Filter:

@@ -21,3 +21,17 @@ rclone:
 
   # Public URL returned after upload
   public_base_url: https://followhub.tenstep.top
+
+arxiv_fig:
+  # Upload matched local figures under this bucket prefix.
+  # Example result:
+  # papers/2604.20834-joyai-ra/architecture-overview.jpg
+  cloudflare_bucket_dir: papers
+
+  # Resize images before upload so PDF-like readability is preserved
+  # without burning too much free storage/ops quota.
+  max_image_long_side: 1600
+  jpeg_quality: 82
+
+  # If rule-based matching is weak, record keyword suggestions for later tuning.
+  low_confidence_threshold: 12

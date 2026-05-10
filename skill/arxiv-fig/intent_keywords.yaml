@@ -1,0 +1,68 @@
+architecture:
+  aliases:
+    - 架构图
+    - architecture
+    - model architecture
+    - 模型结构
+  positive:
+    - architecture
+    - framework
+    - overview
+    - model
+    - network
+    - arch
+  negative:
+    - ablation
+    - training curve
+    - user study
+    - failure case
+    - benchmark
+
+system:
+  aliases:
+    - 系统图
+    - system
+    - 系统架构
+  positive:
+    - system
+    - block diagram
+    - workflow
+    - orchestration
+    - deployment
+  negative:
+    - ablation
+    - qualitative
+    - benchmark
+
+pipeline:
+  aliases:
+    - pipeline
+    - 流程图
+    - 管线图
+  positive:
+    - pipeline
+    - workflow
+    - flow
+    - process
+    - staged
+  negative:
+    - ablation
+    - results
+    - training curve
+
+main_figure:
+  aliases:
+    - 主要图
+    - 主图
+    - main figure
+    - overview figure
+  positive:
+    - overview
+    - framework
+    - architecture
+    - pipeline
+    - system
+  negative:
+    - ablation
+    - appendix
+    - supplementary

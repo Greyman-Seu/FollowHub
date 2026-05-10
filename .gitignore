@@ -20,3 +20,4 @@ ref/**/.claude/
 ref/**/*.zip
 storage/*
 !storage/.gitkeep
+skill/arxiv-fig/keyword_suggestions.jsonl

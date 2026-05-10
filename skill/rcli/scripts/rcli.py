@@ -9,14 +9,36 @@ import stat
 import subprocess
 import sys
 import tempfile
+import zipfile
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.request import urlopen
 
 import yaml
 
 
 class FollowhubRcloneError(Exception):
     pass
+
+
+def default_install_bin_dir() -> Path:
+    return Path.home() / ".local" / "bin"
+
+
+def default_install_binary_path() -> Path:
+    suffix = ".exe" if platform.system().lower().startswith("win") else ""
+    return default_install_bin_dir() / f"rclone{suffix}"
+
+
+def find_rclone_binary() -> Path | None:
+    which_path = shutil.which("rclone")
+    if which_path:
+        return Path(which_path)
+
+    local_binary = default_install_binary_path()
+    if local_binary.exists() and os.access(local_binary, os.X_OK):
+        return local_binary
+    return None
 
 
 def resolve_config_path(explicit_path: str | None) -> Path:
@@ -56,28 +78,35 @@ def load_rclone_config(config_path: Path) -> dict:
 
 
 def ensure_rclone_available() -> None:
-    if shutil.which("rclone"):
+    if find_rclone_binary():
         return
     raise FollowhubRcloneError(
-        "rclone is not installed. Run this script with 'install-help' for installation instructions."
+        "rclone is not installed. Run this script with 'install' or 'install-help'."
     )
 
 
 def install_help_text() -> str:
     system = platform.system().lower()
+    local_bin = default_install_bin_dir()
     lines = [
         "rclone install tutorial",
+        "",
+        "Preferred non-root install:",
+        f"  python3 {Path(__file__).resolve()} install",
+        "",
+        f"This installs rclone into: {local_bin}",
+        "",
+        "If that directory is not in PATH, add:",
+        f"  export PATH=\"{local_bin}:$PATH\"",
         "",
         "macOS:",
         "  brew install rclone",
         "",
-        "Ubuntu/Debian:",
-        "  sudo apt-get update",
-        "  sudo apt-get install -y rclone",
-        "",
-        "Universal Linux/macOS:",
-        "  sudo -v",
-        "  curl https://rclone.org/install.sh | sudo bash",
+        "Linux/macOS manual non-root fallback:",
+        f"  mkdir -p {local_bin}",
+        "  Download the official rclone zip for your platform",
+        f"  Copy the rclone binary into {local_bin}",
+        "  chmod +x ~/.local/bin/rclone",
         "",
         "Windows:",
         "  winget install Rclone.Rclone",
@@ -94,6 +123,65 @@ def install_help_text() -> str:
     else:
         lines.insert(1, f"Detected platform: {platform.system()}")
     return "\n".join(lines)
+
+
+def detect_rclone_archive_name() -> str:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    if system == "linux":
+        os_name = "linux"
+    elif system == "darwin":
+        os_name = "osx"
+    elif system.startswith("win"):
+        os_name = "windows"
+    else:
+        raise FollowhubRcloneError(f"Unsupported platform: {platform.system()}")
+
+    if machine in {"x86_64", "amd64"}:
+        arch = "amd64"
+    elif machine in {"aarch64", "arm64"}:
+        arch = "arm64"
+    elif machine.startswith("armv7") or machine == "armv7l":
+        arch = "arm-v7"
+    elif machine in {"i386", "i686"}:
+        arch = "386"
+    else:
+        raise FollowhubRcloneError(f"Unsupported architecture: {platform.machine()}")
+
+    return f"rclone-current-{os_name}-{arch}.zip"
+
+
+def install_rclone_non_root() -> Path:
+    archive_name = detect_rclone_archive_name()
+    download_url = f"https://downloads.rclone.org/{archive_name}"
+    install_dir = default_install_bin_dir()
+    install_dir.mkdir(parents=True, exist_ok=True)
+    binary_path = default_install_binary_path()
+
+    with tempfile.TemporaryDirectory(prefix="rclone-install-") as tmpdir:
+        archive_path = Path(tmpdir) / archive_name
+        with urlopen(download_url, timeout=120) as response:
+            archive_path.write_bytes(response.read())
+
+        with zipfile.ZipFile(archive_path) as archive:
+            members = archive.namelist()
+            binary_member = next(
+                (
+                    member
+                    for member in members
+                    if member.endswith("/rclone") or member.endswith("\\rclone")
+                ),
+                None,
+            )
+            if binary_member is None:
+                raise FollowhubRcloneError("Could not find rclone binary in downloaded archive.")
+            archive.extract(binary_member, path=tmpdir)
+            extracted_binary = Path(tmpdir) / binary_member
+            shutil.copy2(extracted_binary, binary_path)
+
+    binary_path.chmod(0o755)
+    return binary_path
 
 
 def normalize_key(key: str) -> str:
@@ -138,7 +226,10 @@ def temp_rclone_config(config: dict):
 
 
 def run_rclone(temp_config_path: str, subcommand: str, args: list[str]) -> subprocess.CompletedProcess:
-    cmd = ["rclone", subcommand, "--config", temp_config_path, *args]
+    binary = find_rclone_binary()
+    if not binary:
+        raise FollowhubRcloneError("rclone is not installed.")
+    cmd = [str(binary), subcommand, "--config", temp_config_path, *args]
     try:
         return subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError as exc:
@@ -171,17 +262,17 @@ def output(payload: dict, as_json: bool) -> int:
 
 
 def command_check(as_json: bool) -> int:
-    path = shutil.which("rclone")
+    path = find_rclone_binary()
     if not path:
         return output(
             {
                 "ok": False,
-                "message": "rclone is not installed. Run 'install-help' for instructions.",
+                "message": "rclone is not installed. Run 'install' or 'install-help'.",
             },
             as_json,
         )
 
-    proc = subprocess.run(["rclone", "version"], capture_output=True, text=True, check=False)
+    proc = subprocess.run([str(path), "version"], capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         return output(
             {
@@ -196,7 +287,7 @@ def command_check(as_json: bool) -> int:
     return output(
         {
             "ok": True,
-            "path": path,
+            "path": str(path),
             "version": first_line,
             "message": f"{first_line} ({path})",
         },
@@ -207,6 +298,26 @@ def command_check(as_json: bool) -> int:
 def command_install_help(as_json: bool) -> int:
     text = install_help_text()
     return output({"ok": True, "message": text}, as_json)
+
+
+def command_install(as_json: bool) -> int:
+    try:
+        binary_path = install_rclone_non_root()
+    except Exception as exc:
+        return output({"ok": False, "message": f"Failed to install rclone: {exc}"}, as_json)
+
+    proc = subprocess.run([str(binary_path), "version"], capture_output=True, text=True, check=False)
+    first_line = (proc.stdout or "").splitlines()[0] if proc.stdout else "rclone installed"
+    path_export = f'export PATH="{default_install_bin_dir()}:$PATH"'
+    return output(
+        {
+            "ok": proc.returncode == 0,
+            "path": str(binary_path),
+            "version": first_line,
+            "message": f"Installed {first_line} to {binary_path}\nIf needed, add to PATH:\n{path_export}",
+        },
+        as_json,
+    )
 
 
 def command_copyto(args: argparse.Namespace, config: dict, as_json: bool) -> int:
@@ -338,6 +449,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check", help="Check whether rclone is installed.")
+    subparsers.add_parser("install", help="Install rclone to ~/.local/bin without sudo.")
     subparsers.add_parser("install-help", help="Print rclone installation instructions.")
 
     parser_copyto = subparsers.add_parser("copyto", help="Upload one file to an exact object key.")
@@ -400,6 +512,8 @@ def main() -> int:
 
         if args.command == "check":
             return command_check(as_json)
+        if args.command == "install":
+            return command_install(as_json)
         if args.command == "install-help":
             return command_install_help(as_json)
 

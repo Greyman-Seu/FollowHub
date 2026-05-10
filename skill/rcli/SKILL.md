@@ -93,7 +93,27 @@ The helper can print the tutorial directly:
 python3 "$SKILL_DIR/scripts/rcli.py" install-help
 ```
 
-Prefer the platform package manager when available.
+Default: install without sudo into the current user's home directory:
+
+```bash
+python3 "$SKILL_DIR/scripts/rcli.py" install
+```
+
+This installs `rclone` into `~/.local/bin/rclone`.
+
+If `~/.local/bin` is not in `PATH`, add:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Official script fallback for users who prefer the upstream installer and do not want sudo:
+
+```bash
+curl https://rclone.org/install.sh | bash
+```
+
+Keep platform package managers as optional alternatives, not the default path.
 
 macOS:
 
@@ -108,13 +128,6 @@ sudo apt-get update
 sudo apt-get install -y rclone
 ```
 
-Universal Linux/macOS install from the official project:
-
-```bash
-sudo -v
-curl https://rclone.org/install.sh | sudo bash
-```
-
 Windows:
 
 ```powershell
@@ -127,7 +140,7 @@ After install, verify again:
 rclone version
 ```
 
-If installation needs network or elevated permissions, ask the user before running it.
+If installation needs network permissions, ask the user before running it.
 
 ## Temporary R2 Remote
 

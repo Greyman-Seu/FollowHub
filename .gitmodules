@@ -13,3 +13,6 @@
 [submodule "ref/hermes-arxiv-agent"]
 	path = ref/hermes-arxiv-agent
 	url = https://github.com/genggng/hermes-arxiv-agent.git
+[submodule "submodules/llm-wiki-skill"]
+	path = submodules/llm-wiki-skill
+	url = git@github.com:Greyman-Seu/llm-wiki-skill.git

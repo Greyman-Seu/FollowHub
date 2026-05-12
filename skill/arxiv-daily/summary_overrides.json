@@ -1,0 +1,52 @@
+{
+  "overrides": {
+    "2605.07308": {
+      "one_liner_zh": "AT-VLA 用自适应触觉注入和双流反应机制提升 VLA 在接触密集操作中的实时反馈能力。",
+      "summary_cn": "Vision-Language-Action (VLA) 模型显著提升了机器人执行多样任务的能力，但在需要精确物理交互的接触密集型操作场景中仍面临挑战。为解决这一问题，近期工作尝试在下游任务中引入触觉信号，使预训练 VLA 能理解触觉反馈。然而，在预训练阶段很少出现的新模态若在微调时直接引入，可能破坏 VLA 的预训练能力；同时，VLA 天生较慢的推理速度也限制了对触觉反馈的实时利用。为此，本文提出 Adaptive Tactile Vision-Language-Action (AT-VLA)，其核心是新的 Adaptive Tactile Injection 机制，可动态决定何时、在何处注入触觉，仅在其对动作生成有显著帮助时才使用，从而尽量减少对预训练表征的干扰。此外，作者提出 Tactile Reaction Dual-Stream 机制，将感知处理解耦为低频视觉语言流和高频触觉控制流，实现 0.04 秒内的实时闭环响应。真实机器人实验充分验证了 AT-VLA 在接触密集型操作任务中的有效性。"
+    },
+    "2605.07306": {
+      "one_liner_zh": "BioProVLA-Agent 面向湿实验操作，把 protocol 驱动规划、视觉验证和 VLA 执行整合为低成本闭环系统。",
+      "summary_cn": "生物实验室自动化可以减少重复劳动并提高可复现性，但在湿实验环境中实现可靠的具身执行仍然很困难。实验 protocol 往往缺乏结构化表示，实验器皿经常透明或反光，多步骤流程也需要超越一次性指令跟随的状态感知执行。现有机器人系统通常依赖昂贵硬件、固定工作流、专用仪器或面向机器人专家的接口。本文提出 BioProVLA-Agent，这是一个低成本、由 protocol 驱动、视觉增强、并由 Vision-Language-Action (VLA) 模型支持的具身多智能体系统，用于生物操作。系统以 protocol 作为任务接口，将协议解析、视觉状态验证和具身执行整合到闭环工作流中。Tailored LLM Protocol Agent 负责把 protocol 转成可验证子任务；VLM-RAG Verification Agent 利用观测、机器人状态、检索知识和成败样例评估子任务的准备状态与完成情况；VLA Embodied Agent 则通过轻量策略执行已验证子任务。为提升湿实验视觉扰动下的鲁棒性，作者提出 AugSmolVLA 在线增强策略，专门处理透明器皿、反光、光照变化和过曝。作者在包含 15 个原子任务、6 个复合流程和 3 个双臂任务的分层基准上进行了评测，结果表明在正常和高曝光设置下，AugSmolVLA 在精确放置、透明物体操作、复合流程和退化视觉场景中都比 ACT、X-VLA 和原始 SmolVLA 更稳定。"
+    },
+    "2605.07381": {
+      "one_liner_zh": "ACA 指出机器人少样本适配盲目追求多样性会掉入 diversity trap，并提出 anchor 优先的两阶段适配框架。",
+      "summary_cn": "尽管 Vision-Language-Action (VLA) 模型具备广泛的通用能力，但要部署到特定机器人硬件上，仍需要通过真实世界适配来弥合 embodiment gap。由于机器人示范数据昂贵，这种适配通常必须在严格的数据预算下进行。本文识别出一个关键的 diversity trap：常见的“最大化覆盖度”启发式，即通过采集多样化、一次性的示范来扩展覆盖范围，在存在不可忽略估计噪声时反而可能适得其反。作者将这一现象形式化为 Coverage-Density Trade-off。通过把策略误差分解为估计误差和外推误差两部分，作者刻画了在固定预算下独特条件数量的内部最优分配。基于这一分析，本文提出 Anchor-Centric Adaptation (ACA) 两阶段框架：先在核心 anchor 上用重复示范稳定策略骨架，再通过 teacher-forced error mining 和受约束的残差更新，有选择地扩展到高风险边界。真实机器人实验表明，在相同预算下 ACA 相比标准的多样性采样策略能显著提升任务可靠性和成功率。"
+    },
+    "2605.07605": {
+      "one_liner_zh": "BrickCraft 通过参考砖相对建模和 situated manuals，把长程积木装配拆成可复用的空间落地技能链。",
+      "summary_cn": "自主机器人进行互锁积木装配，需要把长程任务推理、空间对齐和细粒度操作无缝结合起来。本文提出 BrickCraft，这是一个面向长程且具泛化能力的互锁积木装配组合式框架。BrickCraft 使用相对化表示来建模装配过程，其中每一步都锚定到部分结构中的参考砖，从而将复杂任务分解为有限组可复用的原子技能。BrickCraft 通过 situated manuals 弥合高层装配计划与物理执行之间的差距，这类 manual 会把装配意图投射到实时机器人观测上，为学习到的 visuomotor skills 提供显式空间引导。最终，BrickCraft 采用组合式执行流水线，把这些空间对齐后的技能串联起来完成长程装配任务。大量实验表明，BrickCraft 能从有限示范中学到高质量装配技能，并对未见结构表现出很强的组合泛化能力。"
+    },
+    "2605.06841": {
+      "one_liner_zh": "AGWM 把动作先决条件建成 affordance DAG，用于追踪可执行性的动态变化并降低 world model 长程误差。",
+      "summary_cn": "在基于模型的学习中，智能体通过基于 world model 预测的轨迹模拟来学习行为。标准 world model 通常学习一个静态转移函数，把状态和动作映射到下一状态；当某个动作和某个结果在训练数据中频繁共现时，模型往往会把这种相关性内化为一般性的因果规则，而忽略动作的前置条件。然而在交互环境中，智能体动作会重塑未来的 affordance 空间。在每个时间步，一个动作可能只有在满足其先决条件后才可执行，也可能在这些条件被破坏后变为不可执行。作者将这类事件称为 structure-changing events。传统 world model 往往无法判断某个动作在当前状态下是否可执行，尤其是在多步预测时更明显。每一步 imagined rollout 都建立在错误的 affordance 状态上，误差会沿时间步不断累积。本文提出 AGWM，通过学习一个由先决条件依赖关系构成的 DAG 形式抽象 affordance 结构，显式跟踪动作可执行性的动态变化。实验表明，该方法能降低多步预测误差、提升对新配置的泛化能力，并改善可解释性。"
+    },
+    "2605.07794": {
+      "one_liner_zh": "NoiseGate 学习逐 latent 的时间步门控策略，让 WAM 按未来观测可靠性自适应调节动作生成。",
+      "summary_cn": "World Action Models (WAMs) 是一类新兴策略模型，它把机器人动作生成与未来观测建模绑定在一起。本文关注联合 video-action 建模范式，其中动作和想象出的未来观测沿共享的去噪或流轨迹共同生成，因此感知、预测和控制被耦合在同一个生成过程中。现有 WAM 通常使用 Mixture-of-Transformers 实现这一范式，在其中视频 token 与动作 token 通过共享自注意力交互。理论上，这种架构可以为每个预测 latent frame 分配单独的时间步，但当前系统通常把这一自由度压缩成单一共享标量。在 Diffusion Forcing 的视角下，这种共享 schedule 等于假设所有预测 latent 对动作生成都同样可靠。作者因此把逐 latent 的 schedule 视为一种可学习的信息门控策略：通过改变某个 latent frame 的噪声水平，策略可以调节该 frame 对动作 token 的贡献可靠性。本文提出 NoiseGate，将逐 latent 时间步采样、轻量 Gating Policy Network 与基于任务奖励的 schedule 策略优化结合起来。在联合 video-action backbone 上，NoiseGate 在多种 RoboTwin 操作任务上都取得了稳定增益。"
+    },
+    "2605.07687": {
+      "one_liner_zh": "PhySPRING 用可微 GNN 学习弹簧质点数字孪生的分层降采样拓扑，在保持物理保真度的同时提升仿真效率。",
+      "summary_cn": "基于物理的数字孪生旨在预测真实世界物体在交互下的动力学，从而支持机器人中的 real-to-sim-to-real 应用。现有方法通常把数字孪生重建为显式物理模型，例如弹簧质点系统，再用它来预测动力学；但得到的模型往往继承了视觉重建的分辨率，而没有被约简到复现任务相关动力学所需的物理复杂度。这种不匹配会引入冗余拓扑，使反复进行前向动力学 rollout 的代价过高。为解决这一问题，本文提出 PhySPRING，这是一种完全可微、基于 GNN 的方法，用于降低弹簧质点数字孪生的复杂度。PhySPRING 从观测中联合学习一组层次化粗化图拓扑及其力学参数。在每一层约简中，PhySPRING 会合并具有相似学习到的动态响应的节点来优化拓扑，同时保持每一层约简结果仍是显式弹簧质点系统。在 PhysTwin 基准上，PhySPRING 在稠密重建和预测精度上优于 PhysTwin，同时约简后的模型在物理和视觉保真度上保持稳定，并带来最高 2.30 倍加速。作者还在一个 Real2Sim 机器人策略评估流水线中验证了 PhySPRING 的有效性，将约简模型零样本替换进 ACT 和 π0 的评估中，在不同下采样层级下保持相近的操作成功率，同时提升动作采样效率。总体来看，PhySPRING 在不牺牲保真度和机器人实用性的前提下，实现了高效且保持结构的弹簧质点模型约简。"
+    },
+    "2605.07215": {
+      "one_liner_zh": "PISTO 将 STOMP 解释为对 Boltzmann 轨迹分布的变分推断，并用 proximal KL 正则稳定随机轨迹优化更新。",
+      "summary_cn": "STOMP 这类随机轨迹优化方法能够处理不可微代价函数，相比基于梯度的方法具备更大的灵活性。本文表明，STOMP 隐式地最小化了与一个 Boltzmann 轨迹分布之间的 KL 散度，从而揭示了其更新背后优雅的变分推断结构。基于这一观察，作者提出 Proximal Inference for Stochastic Trajectory Optimization (PISTO) 算法，通过在目标函数中加入相邻两次高斯 proposal 之间的 KL 正则项来稳定更新。这个 proximal 形式可以解释为 trust region，并导出可闭式计算的均值更新，其形式是某个 surrogate distribution 下的期望。作者通过基于重要性加权的 Monte Carlo 采样来估计这些期望，从而得到一个简单、无导数的算法，同时保留 STOMP 无需修改即可处理不可微和不连续代价的能力。在机器人手臂运动规划基准上，PISTO 实现了 89% 的成功率，优于 CHOMP 的 63% 和 STOMP 的 68%，同时生成更短、更平滑的轨迹，速度也达到竞争性随机方法的两倍。作者还在富接触的 MuJoCo 运动与操作任务上验证了 PISTO，在奖励表现上持续优于 CEM 和 MPPI 基线。"
+    },
+    "2605.07199": {
+      "one_liner_zh": "Three-in-One World Model 用统一的 DBM belief 表征同时支持一致性能量评估、结果预测和反事实干预推断。",
+      "summary_cn": "营销决策体现了潜在消费者异质性、随时间变化的内部状态以及显式干预之间的相互作用，而现有偏预测或偏语言的模型并不能统一刻画这种结构。本文提出一种 Three-in-One world-model 架构，其中 Deep Boltzmann Machine (DBM) 从人口统计、时间以及滞后动作和结果中学习一个冻结的 belief 表征，并在其上附加轻量级任务特定 adapter。同一个 belief 在单一框架中支持三项任务：(i) 通过 DBM 的 free energy 进行基于能量的一致性评估；(ii) 通过 adapter 进行结果预测；(iii) 在固定 belief 并只改变输入动作的情况下进行反事实推断。作者在一个受控模拟环境中验证该方法，其中每个消费者的潜在价格敏感度、促销响应性和基础偏好都是已知的。结果表明，这些 adapter 在 visit-AUC 和 purchase-AUC 上可以匹配强 MLP 基线，同时在恢复异质处理效应方面显著优于 S/T/X/DR learner 以及使用相同原始特征构建的 Causal Forest，尤其是在受价格与促销混杂影响的干预场景下优势最明显。此外，free-energy clamp 会系统性地惩罚那些缺少先前促销暴露的反事实购买轨迹，而且这种惩罚会随着潜在基础偏好以符合预期的方式变化。结果说明，DBM belief 能以适用于反事实查询的形式解耦潜在特征，从而为营销干预提供一个统一的 world-model substrate。"
+    },
+    "2605.07727": {
+      "one_liner_zh": "DFP 用 Wasserstein 梯度流构造单步生成策略，在 Robomimic 和 OGBench 多个操作任务上超过 ODE 型策略。",
+      "summary_cn": "本文提出 Drifting Field Policy (DFP)，这是一种建立在 drifting model 范式上的非 ODE 单步生成策略。作者把策略更新表述为朝向一个软目标策略的 reverse-KL Wasserstein-2 梯度流，因此每次 DFP 更新都对应于概率空间中的一次梯度步。按构造，这个梯度可以分解为两个部分：一部分朝向更高 action-value 区域上升，另一部分则与 anchor policy 做 score matching，从而充当 trust region。作者进一步导出了原本难以处理的更新损失的一个简单、可计算 surrogate，其形式类似于对 critic 选出的 top-K 动作执行行为克隆。实验发现，这种机制对 drifting backbone 尤其有效，原因在于其非 ODE 参数化。借助单步推理，DFP 在 Robomimic 和 OGBench 的多个操作任务上达到了新的最佳性能，并超过了基于 ODE 的策略。"
+    },
+    "2605.07278": {
+      "one_liner_zh": "RC-aux 为 latent world model 增加多步与可达性校正监督，缓解预测准确但不利于规划的表示错位问题。",
+      "summary_cn": "一个 latent world model 可能在短时预测上非常准确，但其诱导出的 latent space 仍然与规划 poorly aligned。关键问题在于时空错配：这些模型往往用局部预测监督训练，却被部署到需要长程目标导向搜索的 latent space 中，而该空间中的欧氏距离未必能反映在有限动作预算下什么状态是真正可达的。本文提出 Reachability-Correction auxiliary objective (RC-aux)，它是针对无重建 latent world model 的一种轻量校正方法。RC-aux 保持原有 world-model backbone 不变，并沿两个维度引入与规划对齐的监督。时间维度上，多步 open-loop prediction 让模型超越单步一致性；空间维度上，预算条件化的 reachability 监督结合时间硬负样本，使 latent space 能区分“最终可达”与“在当前规划视野内可达”的状态。测试时，学习到的 reachability 信号还可以被 reachability-aware planner 使用，从而偏向那些既朝向目标、又在预算约束下真正可达的轨迹。作者将 RC-aux 实例化到 LeWorldModel 上，并在 continuation-training 和 matched-from-scratch 设置下进行了评估。在目标条件像素控制任务和一个 LIBERO-Goal 扩展上，RC-aux 都以适度额外代价提升了基于 LeWM 的规划效果。结果表明，latent world model 的规划能力不仅依赖预测精度，也依赖其表征是否编码了下游搜索所需的时间与几何结构。"
+    },
+    "2605.07514": {
+      "one_liner_zh": "该工作提出用 action-state consistency 诊断 WAM rollout 可靠性，并用无 value 的共识选择提升 RoboCasa 与 RoboTwin 成功率。",
+      "summary_cn": "World Action Models (WAMs) 通过预测未来观测和动作来进行 imagined rollout，从而支持决策。然而，这些 imagined future 的可靠性一直缺乏系统检验：一个生成出来的未来究竟只是视觉上合理，还是在动力学上与它声称对应的动作序列兼容？本文识别出 action-state consistency，即预测动作与诱导出的状态转移之间的一致性，是 WAM 可靠性中缺失的重要维度。通过对代表性的 joint-prediction 和 inverse-dynamics 模型进行系统研究，作者发现 action-state consistency 在许多任务上都能稳定地区分成功 rollout 与失败 rollout，并且与学习到的 value estimate 呈现相似的成败趋势。这表明 consistency 捕捉到了超越视觉真实性的、与决策相关的结构。作者还进一步指出 background collapse 是一个重要边界条件：在低动态失败轨迹中，由于静态未来更容易预测，这些轨迹会表现出一种具有迷惑性的高一致性。基于这些发现，本文提出一种无 value 的共识式测试时选择策略，通过候选 rollout 之间的未来预测一致性来排序。该策略无需额外训练或奖励建模，就能提升 RoboCasa 和 RoboTwin 2.0 上的成功率。总体上，本文将 action-state consistency 确立为评估 WAM 可靠性的诊断工具，也将其证明为一种适合无 value 规划的实用信号。"
+    }
+  }
+}

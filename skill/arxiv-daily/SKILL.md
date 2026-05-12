@@ -1,99 +1,133 @@
 ---
 name: arxiv-daily
-description: Use when the user asks for today's arXiv follow-up or missed-day arXiv backfill; this is a prompt-only pipeline skill that orchestrates arxiv-collect, arxiv-filter, arxiv-enrich, follow-publish, and rcli.
+description: Use when the user asks for today's arXiv follow-up or missed-day arXiv backfill; this skill must execute the explicit collect -> title-prefilter -> filter -> enrich -> publish chain and must stop on missing required steps.
 ---
 
 # arxiv-daily
 
 Pipeline-level skill for daily arXiv follow-up.
 
-`arxiv-daily` is an agent procedure, not a Python product surface. It should not own deterministic implementation logic. Use the lower-level skills and their tools for actual work.
+`arxiv-daily` owns orchestration. It must not replace required stages with manual shortlisting.
 
-## Role
+## Required Entry Point
 
-When the user says something like:
+Normal daily execution must use the orchestrator:
 
-```text
-/arxiv-daily 帮我统计今天信息
+```bash
+python3 skill/arxiv-daily/run_daily.py daily --config followhub.yaml
 ```
 
-the agent should run the full pipeline:
+Backfill execution must also use the orchestrator:
 
-1. Collect raw arXiv papers.
-2. Run title-level prefilter with subagents.
-3. Run full-paper filter with subagents.
-4. Enrich selected papers with subagents.
-5. Merge results into a Follow digest.
-6. Publish the digest to R2/page.
-7. Verify the published JSON and page source.
+```bash
+python3 skill/arxiv-daily/run_daily.py backfill --config followhub.yaml --from-date 2026-05-01 --to-date 2026-05-03
+```
+
+The agent must not improvise a different normal execution path when this orchestrator is available.
+
+## Non-Negotiable Execution Contract
+
+For a normal daily run, the agent must execute these stages in order:
+
+1. `arxiv-collect`
+2. `arxiv-title-prefilter`
+3. `arxiv-filter`
+4. `arxiv-enrich` on selected papers only
+5. `follow-publish`
+6. publish verification
+
+If any required step cannot be completed, the agent must stop and report the blocker instead of silently switching to a manual fallback.
+
+## Hard Prohibitions
+
+The agent must not:
+
+- manually shortlist papers from raw `arxiv-collect` output as a substitute for `arxiv-title-prefilter` or `arxiv-filter`
+- publish directly from raw `arxiv-collect` output
+- skip `arxiv-filter` when `raw_count > 20`
+- treat `arxiv-collect` built-in enrichment as a replacement for the explicit `arxiv-enrich` stage
+- run `arxiv-enrich` on the full raw daily set
+- run `follow-publish` before `filter_results.json` exists
 
 ## Skill Boundaries
 
 - `arxiv-collect`
   - raw daily/backfill acquisition
-  - no semantic filtering
-- `arxiv-filter`
-  - worker skill for include/exclude, domains, one-line Chinese summary, Chinese summary, and reason
-  - accepts one paper or a small batch
+  - may contain built-in metadata enrichment in current implementation
+  - is still treated as raw acquisition for pipeline purposes
 - `arxiv-title-prefilter`
-  - worker step owned by `arxiv-daily`
   - title/category-only fast screening
   - outputs `keep` / `drop` / `uncertain`
+- `arxiv-filter`
+  - final include/exclude decision
+  - owns `domains`, `one_liner_zh`, `summary_cn`, and `reason`
 - `arxiv-enrich`
-  - worker skill for selected paper details
+  - post-filter metadata completion for selected papers only
   - authors, affiliations, links, code/project URLs, English abstract normalization, score fields
-  - not the owner of Chinese summary generation
 - `follow-publish`
   - package and publish Follow JSON
 - `rcli`
-  - R2 upload/list verification
+  - R2 verification
 
 ## Daily Procedure
 
 1. Resolve config:
    - prefer `FOLLOWHUB_CONFIG`
    - otherwise use repo-local `followhub.yaml`
-2. Use `arxiv-collect` to run daily raw collection.
-3. Confirm raw count is category-wide and comparable to `ArxivReader` semantics.
-4. If the run targets "today" but `listing_date != today`, do not publish a new daily by default. Treat this as "arXiv has not rolled over yet" unless the user explicitly asks to reuse the latest listing.
-5. Build title-prefilter tasks from the raw daily JSON.
-6. Spawn title-prefilter subagents in batches using only title/category information.
-7. Merge title-prefilter outputs into `prefilter_results.json`.
-8. Build full filter tasks from papers marked `keep` or `uncertain`.
-9. Spawn `arxiv-filter` subagents in batches.
-10. Merge all worker outputs into `filter_results.json`.
-11. If any selected paper still has missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` for those papers first.
-12. Use the selected IDs from `filter_results.json` to run `arxiv-enrich` workers.
-13. Merge filter and enrich results into a Follow daily digest.
-14. Use `follow-publish` to publish to the configured R2 prefix, normally `follow/`.
-15. Verify:
+2. Run `arxiv-collect`.
+3. Confirm daily `listing_date`.
+4. If the target is "today" but `listing_date != today`, stop before publish by default.
+5. Build title-prefilter batches from the raw daily JSON.
+6. Run `arxiv-title-prefilter`, usually in batches.
+7. Merge all prefilter outputs into `prefilter_results.json`.
+8. Build full filter batches from all `keep` and `uncertain` papers.
+9. Run `arxiv-filter`, usually in batches.
+10. Merge all filter outputs into `filter_results.json`.
+11. Retry `arxiv-filter` for selected papers that still lack `one_liner_zh` or `summary_cn`.
+12. Build enrich inputs from `include_in_follow=true` papers only.
+13. Run `arxiv-enrich` on the selected subset only.
+14. Merge filter + enrich results into the final daily digest.
+15. Run `follow-publish`.
+16. Verify:
     - `follow/latest.json`
     - `follow/daily/YYYY-MM-DD.json`
     - `follow/sources/arxiv.json`
 
-## Backfill Procedure
+## Required Artifacts
 
-Use the same shape as daily, but `arxiv-collect` should run backfill by date window.
+A successful daily run must produce all of the following:
 
-Backfill must preserve one digest per date.
+- raw daily JSON from `arxiv-collect`
+- `prefilter_results.json`
+- `filter_results.json`
+- `enrich_input.json`
+- `enrich_results.json`
+- final daily digest JSON
+- publish output metadata
+- verification output metadata
 
-Publishing historical days is maintenance behavior. When using `follow-publish`, historical writes must be explicit through its safety flags.
+Missing required artifacts are a failed run, not a warning.
 
 ## Subagent Policy
 
-Subagent orchestration belongs here, not in worker skills.
+Batching belongs here, not in worker skills.
 
 Recommended defaults:
 
-- 1-20 raw papers: the main agent may skip title-prefilter and run `arxiv-filter` directly.
-- More than 20 raw papers: spawn title-prefilter workers first.
-- Title-prefilter workers should review title + category only and output `keep` / `drop` / `uncertain`.
-- `keep` and `uncertain` should both advance to full `arxiv-filter`.
-- More than 5 full-filter papers: spawn `arxiv-filter` workers in groups of 3-5 papers.
-- Enrich only selected papers after filtering.
-- Do not enrich the full raw daily set.
+- `raw_count > 20`
+  - title-prefilter is mandatory
+- `keep` and `uncertain`
+  - both advance to `arxiv-filter`
+- `drop`
+  - must not advance to `arxiv-filter`
+- more than 5 full-filter papers
+  - batch `arxiv-filter` in groups of 3-5 papers
+- enrich only selected papers after filtering
 
-Each title-prefilter worker should return:
+Subagents are optional optimization for `arxiv-title-prefilter`, `arxiv-filter`, and `arxiv-enrich`.
+The contract is stage order and artifacts, not a specific concurrency model.
+
+Each title-prefilter worker returns:
 
 ```json
 {
@@ -131,18 +165,18 @@ Each `arxiv-filter` worker returns:
 - Publish only `include_in_follow=true` papers.
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
-- If Chinese summary fields still remain missing after retry, the paper may still be published, but this should be treated as an incomplete follow item and tracked for later repair.
+- If Chinese summary fields still remain missing after retry, the paper may still be published, but this should be treated as incomplete and tracked.
 - If `listing_date != today` for a "today" run, default behavior is to skip publish rather than duplicate the previous listing.
-- Do not use static keyword rules as the final Follow decision.
 - R2 deletion and purge are not part of the daily path.
 
-## Current Production Chain
+## Current Orchestrator Surface
 
 ```text
-arxiv-daily
+arxiv-daily/run_daily.py
   -> arxiv-collect
-  -> arxiv-filter
-  -> arxiv-enrich
+  -> arxiv-title-prefilter stage
+  -> arxiv-filter stage
+  -> selected-only arxiv-enrich stage
   -> follow-publish
-  -> rcli
+  -> rcli verification
 ```

@@ -48,4 +48,47 @@ python3 /home/tenstep/workspace/followhub/skill/arxiv-enrich/arxiv_enrich.py enr
 - In agent-native usage, `arxiv-enrich` is usually the worker and `arxiv-find` is the coordinator.
 - When a shared profile is provided, `arxiv-enrich` recomputes `relevance_score` using keyword/category/favorites semantics compatible with `arxiv-find`, while also borrowing `evil-read-arxiv` style recency and recommendation heuristics.
 - `one_liner_zh` and `summary_cn` should not rely on API calls inside this script.
-- When those fields are missing, the output should expose a prompt so the invoking agent can fill them.
+- When those fields are missing, the output should expose structured agent-completion tasks so the invoking agent can fan out subagents and fill them.
+
+## Two-Phase Contract
+
+`arxiv-enrich` is intentionally split into two phases:
+
+1. CLI/local phase
+   - normalize `abstract_en`
+   - enrich affiliations, author metadata, code/project links, and scores
+   - preserve existing `one_liner_zh` and `summary_cn` when present
+   - emit `needs_agent_summary` and prompt fields when Chinese text is missing
+
+2. Agent completion phase
+   - the invoking agent reads `agent_completion.tasks`
+   - parallelizes them with subagents when several papers are missing Chinese fields
+   - merges returned `one_liner_zh` and `summary_cn` back into the enrich result
+
+`arxiv-enrich` owns this second-stage handoff contract. Higher-level orchestrators such as `arxiv-daily` should treat `arxiv-enrich` as the stage responsible for exposing these agent tasks, rather than re-deriving prompts themselves.
+
+## Output Handoff
+
+When agent completion is still required, the enriched payload should include:
+
+```json
+{
+  "agent_completion": {
+    "required": true,
+    "task_count": 2,
+    "recommended_batch_size": 3,
+    "recommended_worker": "arxiv-enrich-agent-completion",
+    "tasks": [
+      {
+        "arxiv_id": "2605.xxxxx",
+        "agent_summary_prompt": "...",
+        "expected_output_schema": {
+          "arxiv_id": "2605.xxxxx",
+          "one_liner_zh": "string",
+          "summary_cn": "string"
+        }
+      }
+    ]
+  }
+}
+```

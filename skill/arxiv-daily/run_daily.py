@@ -16,7 +16,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Dict, List, NoReturn, Optional
 
@@ -34,6 +34,13 @@ SOURCE_ORDER = ["arxiv", "wechat", "x", "bilibili"]
 
 def fail(message: str) -> NoReturn:
     raise SystemExit(message)
+
+
+def stage_log(stage: str, message: str, **details: object) -> None:
+    payload = {"stage": stage, "message": message}
+    if details:
+        payload["details"] = details
+    print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
 
 
 def load_yaml(path: Path) -> Dict[str, object]:
@@ -99,6 +106,7 @@ def dedup_strings(values: List[str]) -> List[str]:
 class DailyPaths:
     run_root: Path
     raw_json: Path
+    prefilter_input: Path
     prefilter_results: Path
     filter_input: Path
     filter_results: Path
@@ -113,6 +121,7 @@ def build_paths(run_root: Path, run_date: str) -> DailyPaths:
     return DailyPaths(
         run_root=run_root,
         raw_json=run_root / "collect" / f"{run_date}-daily.json",
+        prefilter_input=run_root / "prefilter_input.json",
         prefilter_results=run_root / "prefilter_results.json",
         filter_input=run_root / "filter_input.json",
         filter_results=run_root / "filter_results.json",
@@ -150,6 +159,7 @@ def resolve_domain_config(config: Dict[str, object]) -> Dict[str, Dict[str, str]
 
 
 def collect_daily(config_path: Path, output_root: Path) -> Dict[str, object]:
+    stage_log("collect", "start", config=str(config_path), output_root=str(output_root))
     collect_dir = output_root / "collect"
     collect_dir.mkdir(parents=True, exist_ok=True)
     proc = run_command(
@@ -180,6 +190,14 @@ def collect_daily(config_path: Path, output_root: Path) -> Dict[str, object]:
     paths = build_paths(run_root, run_date)
     paths.raw_json.parent.mkdir(parents=True, exist_ok=True)
     paths.raw_json.write_text(raw_source.read_text(encoding="utf-8"), encoding="utf-8")
+    stage_log(
+        "collect",
+        "done",
+        run_date=run_date,
+        raw_json=str(paths.raw_json),
+        listing_date=str(raw_result.get("listing_date") or ""),
+        raw_count=len(raw_result.get("entries") or []),
+    )
     return raw_result
 
 
@@ -192,52 +210,30 @@ def ensure_listing_date(raw_payload: Dict[str, object], requested_date: str, all
         )
 
 
-def keyword_lists(config: Dict[str, object]) -> Dict[str, List[str]]:
+def build_prefilter_input(raw_payload: Dict[str, object], config: Dict[str, object], output_path: Path) -> Dict[str, object]:
     arxiv = config.get("arxiv") or {}
-    if not isinstance(arxiv, dict):
-        return {"keywords": [], "exclude_keywords": []}
-    return {
-        "keywords": [normalize_text(item) for item in (arxiv.get("keywords") or []) if normalize_text(item)],
-        "exclude_keywords": [normalize_text(item) for item in (arxiv.get("exclude_keywords") or []) if normalize_text(item)],
+    focus = {
+        "keywords": list(arxiv.get("keywords") or []) if isinstance(arxiv, dict) else [],
+        "exclude_keywords": list(arxiv.get("exclude_keywords") or []) if isinstance(arxiv, dict) else [],
+        "topic_context": str(arxiv.get("topic_context") or "") if isinstance(arxiv, dict) else "",
     }
-
-
-def title_prefilter_decision(entry: Dict[str, object], config: Dict[str, object]) -> Dict[str, str]:
-    title = normalize_text(entry.get("title"))
-    categories = [normalize_text(item) for item in (entry.get("categories") or [])]
-    keywords = keyword_lists(config)["keywords"]
-    excludes = keyword_lists(config)["exclude_keywords"]
-    if any(word in title for word in excludes):
-        return {"decision": "drop", "reason": "title hit configured exclude keyword"}
-    strong_hits = [word for word in keywords if word in title]
-    if strong_hits:
-        return {"decision": "keep", "reason": f"title hit focus keyword(s): {', '.join(strong_hits[:3])}"}
-    if "cs.ro" in categories:
-        return {"decision": "uncertain", "reason": "robotics category requires abstract-level review"}
-    if "world model" in title or "policy" in title or "visuomotor" in title or "manipulation" in title:
-        return {"decision": "uncertain", "reason": "title is adjacent to focus and should advance"}
-    return {"decision": "drop", "reason": "title/category do not indicate the configured focus"}
-
-
-def run_title_prefilter(raw_payload: Dict[str, object], config: Dict[str, object], output_path: Path) -> Dict[str, object]:
-    entries = list(raw_payload.get("entries") or [])
-    items = []
-    for entry in entries:
-        decision = title_prefilter_decision(entry, config)
-        items.append(
+    entries = []
+    for entry in (raw_payload.get("entries") or []):
+        entries.append(
             {
                 "arxiv_id": str(entry.get("id") or ""),
-                "decision": decision["decision"],
-                "reason": decision["reason"],
+                "title": str(entry.get("title") or ""),
+                "categories": list(entry.get("categories") or []),
             }
         )
     payload = {
         "mode": "title-prefilter",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
         "raw_count": len(entries),
-        "items": items,
+        "focus": focus,
+        "entries": entries,
     }
     write_json(output_path, payload)
+    stage_log("prefilter", "input-written", input_path=str(output_path), raw_count=len(entries))
     return payload
 
 
@@ -277,82 +273,27 @@ def build_filter_candidates(raw_payload: Dict[str, object], prefilter_payload: D
     return selected
 
 
-def domain_for_entry(entry: Dict[str, object], domain_config: Dict[str, Dict[str, str]]) -> List[Dict[str, str]]:
-    text = normalize_text(entry.get("title")) + "\n" + normalize_text(entry.get("abstract_en") or entry.get("summary"))
-    slugs = []
-    if any(word in text for word in ["robot", "manipulation", "visuomotor", "policy", "embodied", "world action model", "vla"]):
-        slugs.append("physical-embodied-intelligence")
-    if any(word in text for word in ["llm", "vlm", "vision-language-action", "vla", "multimodal"]):
-        slugs.append("llm-vlm")
-    if any(word in text for word in ["agent", "workflow", "planning", "verification"]):
-        slugs.append("agent")
-    if not slugs:
-        slugs.append("physical-embodied-intelligence")
-    result = []
-    for slug in dedup_strings(slugs)[:2]:
-        if slug in domain_config:
-            result.append(domain_config[slug])
-    return result
-
-
-def filter_decision(entry: Dict[str, object], config: Dict[str, object], domain_config: Dict[str, Dict[str, str]], overrides: Dict[str, Dict[str, str]]) -> Dict[str, object]:
-    arxiv_id = str(entry.get("id") or "")
-    title = normalize_text(entry.get("title"))
-    abstract = normalize_text(entry.get("abstract_en") or entry.get("summary"))
-    combined = title + "\n" + abstract
-    lists = keyword_lists(config)
-    hit_count = sum(1 for word in lists["keywords"] if word and word in combined)
-    has_exclude = any(word in combined for word in lists["exclude_keywords"])
-    is_robotics = "cs.ro" in [normalize_text(item) for item in (entry.get("categories") or [])]
-    include = False
-    reason = ""
-    if has_exclude:
-        include = False
-        reason = "hit configured exclude keyword in title or abstract"
-    elif "vision-language-action" in combined or " vla" in combined or title.startswith("vla"):
-        include = True
-        reason = "direct VLA hit"
-    elif "world model" in combined or "world action model" in combined:
-        include = True
-        reason = "world model is in focus"
-    elif "manipulation" in combined and is_robotics:
-        include = True
-        reason = "robot manipulation is in focus"
-    elif hit_count >= 2 and is_robotics:
-        include = True
-        reason = "multiple focus keyword hits in a robotics paper"
-    elif hit_count >= 3:
-        include = True
-        reason = "multiple focus keyword hits"
-    else:
-        include = False
-        reason = "outside the main VLA / manipulation / world-model line"
-    override = overrides.get(arxiv_id, {})
-    return {
-        "arxiv_id": arxiv_id,
-        "include_in_follow": include,
-        "domains": domain_for_entry(entry, domain_config) if include else [],
-        "one_liner_zh": str(override.get("one_liner_zh") or ""),
-        "summary_cn": str(override.get("summary_cn") or ""),
-        "reason": reason,
-    }
-
-
-def run_filter(
+def build_filter_input(
     raw_payload: Dict[str, object],
     filter_candidates: List[Dict[str, object]],
     config: Dict[str, object],
-    domain_config: Dict[str, Dict[str, str]],
     output_path: Path,
 ) -> Dict[str, object]:
-    overrides = load_summary_overrides()
-    items = [filter_decision(entry, config, domain_config, overrides) for entry in filter_candidates]
+    arxiv = config.get("arxiv") or {}
+    focus = {
+        "keywords": list(arxiv.get("keywords") or []) if isinstance(arxiv, dict) else [],
+        "exclude_keywords": list(arxiv.get("exclude_keywords") or []) if isinstance(arxiv, dict) else [],
+        "topic_context": str(arxiv.get("topic_context") or "") if isinstance(arxiv, dict) else "",
+    }
     payload = {
         "mode": "filter",
-        "generated_at": datetime.utcnow().isoformat() + "Z",
-        "items": items,
+        "date": str(raw_payload.get("date") or ""),
+        "count": len(filter_candidates),
+        "focus": focus,
+        "entries": filter_candidates,
     }
     write_json(output_path, payload)
+    stage_log("filter", "input-written", input_path=str(output_path), candidate_count=len(filter_candidates))
     return payload
 
 
@@ -391,12 +332,10 @@ def repair_missing_summary_fields(
             if inferred_summary:
                 item["summary_cn"] = inferred_summary
                 changed = True
-    if changed:
-        save_summary_overrides(overrides)
     return filter_payload
 
 
-def ensure_required_summary_fields(filter_payload: Dict[str, object]) -> None:
+def collect_missing_summary_fields(filter_payload: Dict[str, object]) -> List[str]:
     missing = []
     for item in filter_payload.get("items", []):
         if not bool(item.get("include_in_follow", False)):
@@ -404,11 +343,7 @@ def ensure_required_summary_fields(filter_payload: Dict[str, object]) -> None:
         arxiv_id = str(item.get("arxiv_id") or "")
         if not str(item.get("one_liner_zh") or "").strip() or not str(item.get("summary_cn") or "").strip():
             missing.append(arxiv_id)
-    if missing:
-        fail(
-            "Selected follow papers are still missing required Chinese summary fields after repair: "
-            + ", ".join(missing)
-        )
+    return missing
 
 
 def validate_filter_results(path: Path, allowed_ids: List[str]) -> Dict[str, object]:
@@ -449,10 +384,12 @@ def build_enrich_input(raw_payload: Dict[str, object], filter_payload: Dict[str,
         "selected_ids": selected_ids,
     }
     write_json(output_path, payload)
+    stage_log("enrich", "input-written", input_path=str(output_path), selected_count=len(rows))
     return payload
 
 
 def run_enrich(config_path: Path, enrich_input_path: Path, output_path: Path) -> Dict[str, object]:
+    stage_log("enrich", "start", input_path=str(enrich_input_path), output_path=str(output_path))
     proc = run_command(
         [
             sys.executable,
@@ -472,7 +409,17 @@ def run_enrich(config_path: Path, enrich_input_path: Path, output_path: Path) ->
             json.loads(proc.stdout)
         except Exception:
             pass
-    return load_json(output_path)
+    payload = load_json(output_path)
+    agent_completion = payload.get("agent_completion") or {}
+    stage_log(
+        "enrich",
+        "done",
+        output_path=str(output_path),
+        entry_count=len(payload.get("entries") or []),
+        agent_completion_required=bool(agent_completion.get("required", False)),
+        agent_completion_task_count=int(agent_completion.get("task_count", 0) or 0),
+    )
+    return payload
 
 
 def validate_enrich_results(path: Path, selected_ids: List[str]) -> Dict[str, object]:
@@ -485,6 +432,41 @@ def validate_enrich_results(path: Path, selected_ids: List[str]) -> Dict[str, ob
     if missing:
         fail(f"enrich_results.json is missing {len(missing)} selected papers.")
     return payload
+
+
+def can_reuse_enrich_results(path: Path, selected_ids: List[str]) -> bool:
+    if not path.exists():
+        return False
+    try:
+        payload = validate_enrich_results(path, selected_ids)
+    except Exception:
+        return False
+    agent_completion = payload.get("agent_completion") or {}
+    if bool(agent_completion.get("required", False)) or list(agent_completion.get("tasks") or []):
+        return False
+    entries_by_id = {str(entry.get("id") or ""): entry for entry in (payload.get("entries") or [])}
+    for arxiv_id in selected_ids:
+        entry = entries_by_id.get(str(arxiv_id))
+        if not entry:
+            return False
+        if not str(entry.get("one_liner_zh") or "").strip():
+            return False
+        if not str(entry.get("summary_cn") or "").strip():
+            return False
+    return True
+
+
+def ensure_enrich_agent_completion_done(enrich_payload: Dict[str, object], enrich_results_path: Path) -> None:
+    agent_completion = enrich_payload.get("agent_completion") or {}
+    if not isinstance(agent_completion, dict):
+        return
+    tasks = list(agent_completion.get("tasks") or [])
+    if tasks:
+        fail(
+            "arxiv-enrich reported pending agent completion tasks. "
+            f"Complete them and merge one_liner_zh/summary_cn into {enrich_results_path} before rerunning publish. "
+            f"Pending tasks: {len(tasks)}"
+        )
 
 
 def importance_from_scores(entry: Dict[str, object]) -> str:
@@ -567,6 +549,7 @@ def build_digest(
         ],
     }
     write_json(output_path, payload)
+    stage_log("digest", "written", output_path=str(output_path), selected_count=len(items))
     return payload
 
 
@@ -601,12 +584,18 @@ def verify_publish_inputs(paths: DailyPaths) -> None:
 def build_verify_file(paths: DailyPaths, digest_payload: Dict[str, object]) -> None:
     sections = list(digest_payload.get("sections") or [])
     first_count = len(sections[0].get("items") or []) if sections else 0
+    incomplete_summary_ids = []
+    for section in sections:
+        for item in section.get("items") or []:
+            if not str(item.get("one_liner_zh") or "").strip() or not str(item.get("summary_cn") or "").strip():
+                incomplete_summary_ids.append(str(item.get("id") or ""))
     write_json(
         paths.verify_json,
         {
             "date": digest_payload.get("date") or "",
             "counts": digest_payload.get("counts") or {},
             "daily_item_count": first_count,
+            "incomplete_summary_ids": incomplete_summary_ids,
             "required_checks": [
                 "follow/latest.json",
                 f"follow/daily/{digest_payload.get('date')}.json",
@@ -621,38 +610,65 @@ def command_daily(args: argparse.Namespace) -> int:
     config = load_yaml(config_path)
     output_root = Path(args.output_root or DEFAULT_OUTPUT_ROOT)
     output_root.mkdir(parents=True, exist_ok=True)
+    stage_log("daily", "start", config=str(config_path), publish=bool(args.publish), output_root=str(output_root))
 
     raw_payload = collect_daily(config_path, output_root)
     run_date = str(raw_payload.get("date") or "")
     paths = build_paths(output_root / run_date, run_date)
     ensure_listing_date(raw_payload, args.date or today_string(), args.allow_stale_listing)
 
-    prefilter_payload = run_title_prefilter(raw_payload, config, paths.prefilter_results)
+    build_prefilter_input(raw_payload, config, paths.prefilter_input)
+    if not paths.prefilter_results.exists():
+        stage_log("prefilter", "awaiting-results", input_path=str(paths.prefilter_input), expected_results=str(paths.prefilter_results))
+        fail(
+            "prefilter_results.json is missing. "
+            f"Use {paths.prefilter_input} with the arxiv-title-prefilter skill, write results to {paths.prefilter_results}, then rerun."
+        )
     prefilter_payload = validate_prefilter_results(paths.prefilter_results, raw_payload)
+    stage_log("prefilter", "results-loaded", results_path=str(paths.prefilter_results), item_count=len(prefilter_payload.get("items") or []))
 
     filter_candidates = build_filter_candidates(raw_payload, prefilter_payload)
-    write_json(paths.filter_input, {"mode": "filter", "count": len(filter_candidates), "entries": filter_candidates})
-    domain_config = resolve_domain_config(config)
-    filter_payload = run_filter(raw_payload, filter_candidates, config, domain_config, paths.filter_results)
+    build_filter_input(raw_payload, filter_candidates, config, paths.filter_input)
+    if not paths.filter_results.exists():
+        stage_log("filter", "awaiting-results", input_path=str(paths.filter_input), expected_results=str(paths.filter_results))
+        fail(
+            "filter_results.json is missing. "
+            f"Use {paths.filter_input} with the arxiv-filter skill, write results to {paths.filter_results}, then rerun."
+        )
     filter_payload = validate_filter_results(paths.filter_results, [str(entry.get("id") or "") for entry in filter_candidates])
+    stage_log("filter", "results-loaded", results_path=str(paths.filter_results), item_count=len(filter_payload.get("items") or []))
 
     enrich_input_payload = build_enrich_input(raw_payload, filter_payload, paths.enrich_input)
     selected_ids = list(enrich_input_payload.get("selected_ids") or [])
     if selected_ids:
-        enrich_payload = run_enrich(config_path, paths.enrich_input, paths.enrich_results)
-        enrich_payload = validate_enrich_results(paths.enrich_results, selected_ids)
+        if can_reuse_enrich_results(paths.enrich_results, selected_ids):
+            enrich_payload = load_json(paths.enrich_results)
+            stage_log(
+                "enrich",
+                "reused-existing-results",
+                output_path=str(paths.enrich_results),
+                entry_count=len(enrich_payload.get("entries") or []),
+            )
+        else:
+            enrich_payload = run_enrich(config_path, paths.enrich_input, paths.enrich_results)
+            enrich_payload = validate_enrich_results(paths.enrich_results, selected_ids)
+            ensure_enrich_agent_completion_done(enrich_payload, paths.enrich_results)
     else:
-        enrich_payload = {"mode": "daily", "entries": []}
+        enrich_payload = {"mode": "daily", "entries": [], "agent_completion": {"required": False, "task_count": 0, "tasks": []}}
         write_json(paths.enrich_results, enrich_payload)
+        stage_log("enrich", "skipped", reason="no selected papers")
 
     filter_payload = repair_missing_summary_fields(filter_payload=filter_payload, enrich_payload=enrich_payload)
     write_json(paths.filter_results, filter_payload)
-    ensure_required_summary_fields(filter_payload)
+    missing_summary_ids = collect_missing_summary_fields(filter_payload)
+    stage_log("filter", "post-enrich-merge", missing_summary_count=len(missing_summary_ids))
 
+    domain_config = resolve_domain_config(config)
     digest_payload = build_digest(raw_payload, filter_payload, enrich_payload, domain_config, paths.digest_json)
     verify_publish_inputs(paths)
 
     command = "publish-daily" if args.publish else "build-daily"
+    stage_log("publish", "start", command=command, digest_json=str(paths.digest_json), output_dir=str(paths.publish_dir))
     run_command(
         [
             sys.executable,
@@ -667,14 +683,17 @@ def command_daily(args: argparse.Namespace) -> int:
         ],
         cwd=REPO_ROOT,
     )
+    stage_log("publish", "done", output_dir=str(paths.publish_dir))
 
     build_verify_file(paths, digest_payload)
+    stage_log("verify", "written", verify_json=str(paths.verify_json))
     print(
         json.dumps(
             {
                 "date": run_date,
                 "run_root": str(paths.run_root),
                 "raw_json": str(paths.raw_json),
+                "prefilter_input": str(paths.prefilter_input),
                 "prefilter_results": str(paths.prefilter_results),
                 "filter_input": str(paths.filter_input),
                 "filter_results": str(paths.filter_results),
@@ -684,6 +703,7 @@ def command_daily(args: argparse.Namespace) -> int:
                 "publish_dir": str(paths.publish_dir),
                 "verify_json": str(paths.verify_json),
                 "published": bool(args.publish),
+                "incomplete_summary_ids": missing_summary_ids,
             },
             ensure_ascii=False,
             indent=2,

@@ -981,6 +981,39 @@ def enrich_entry(
     return enriched
 
 
+def build_agent_completion_task(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "arxiv_id": str(entry.get("id") or ""),
+        "title": str(entry.get("title") or ""),
+        "needs_agent_summary": bool(entry.get("needs_agent_summary", False)),
+        "needs_summary_cn_translation": bool(entry.get("needs_summary_cn_translation", False)),
+        "needs_one_liner_zh": bool(entry.get("needs_one_liner_zh", False)),
+        "agent_summary_prompt": str(entry.get("agent_summary_prompt") or ""),
+        "agent_translation_prompt": str(entry.get("agent_translation_prompt") or ""),
+        "agent_one_liner_prompt": str(entry.get("agent_one_liner_prompt") or ""),
+        "expected_output_schema": {
+            "arxiv_id": str(entry.get("id") or ""),
+            "one_liner_zh": "string",
+            "summary_cn": "string",
+        },
+    }
+
+
+def build_agent_completion(tasks_source: List[Dict[str, Any]]) -> Dict[str, Any]:
+    tasks = [build_agent_completion_task(entry) for entry in tasks_source if entry.get("needs_agent_summary")]
+    return {
+        "required": bool(tasks),
+        "task_count": len(tasks),
+        "recommended_batch_size": 3,
+        "recommended_worker": "arxiv-enrich-agent-completion",
+        "instructions": (
+            "Use agent or subagent workers to fill one_liner_zh and summary_cn for each task. "
+            "Preserve technical meaning, do not invent facts beyond the abstract, and return only structured fields."
+        ),
+        "tasks": tasks,
+    }
+
+
 def enrich_payload(
     payload: Dict[str, Any],
     *,
@@ -992,7 +1025,7 @@ def enrich_payload(
     mode = enriched.get("mode")
 
     if mode in {"daily", "search"}:
-        enriched["entries"] = [
+        enriched_entries = [
             enrich_entry(
                 entry,
                 enable_external_metadata=enable_external_metadata,
@@ -1001,10 +1034,12 @@ def enrich_payload(
             )
             for entry in enriched.get("entries", [])
         ]
+        enriched["entries"] = enriched_entries
+        enriched["agent_completion"] = build_agent_completion(enriched_entries)
         return enriched
 
     if mode == "backfill":
-        enriched["days"] = [
+        enriched_days = [
             enrich_payload(
                 day,
                 enable_external_metadata=enable_external_metadata,
@@ -1013,6 +1048,23 @@ def enrich_payload(
             )
             for day in enriched.get("days", [])
         ]
+        enriched["days"] = enriched_days
+        day_tasks = [
+            task
+            for day in enriched_days
+            for task in ((day.get("agent_completion") or {}).get("tasks") or [])
+        ]
+        enriched["agent_completion"] = {
+            "required": bool(day_tasks),
+            "task_count": len(day_tasks),
+            "recommended_batch_size": 3,
+            "recommended_worker": "arxiv-enrich-agent-completion",
+            "instructions": (
+                "Use agent or subagent workers to fill one_liner_zh and summary_cn for each task. "
+                "Preserve technical meaning, do not invent facts beyond the abstract, and return only structured fields."
+            ),
+            "tasks": day_tasks,
+        }
         return enriched
 
     raise ValueError(f"Unsupported payload mode: {mode}")
@@ -1071,7 +1123,19 @@ def main(argv: Optional[List[str]] = None) -> int:
             scoring_profile=scoring_profile,
         )
         save_json(Path(args.output), enriched)
-        print(json.dumps({"mode": enriched.get("mode"), "output": str(args.output)}, ensure_ascii=False, indent=2))
+        agent_completion = enriched.get("agent_completion") or {}
+        print(
+            json.dumps(
+                {
+                    "mode": enriched.get("mode"),
+                    "output": str(args.output),
+                    "agent_completion_required": bool(agent_completion.get("required", False)),
+                    "agent_completion_task_count": int(agent_completion.get("task_count", 0) or 0),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
 
     parser.print_help()

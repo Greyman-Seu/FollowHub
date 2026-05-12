@@ -213,6 +213,74 @@ favorites:
         enriched = self.module.enrich_payload(payload)
         self.assertEqual(enriched["mode"], "daily")
         self.assertIn("abstract_en", enriched["entries"][0])
+        self.assertIn("agent_completion", enriched)
+
+    def test_enrich_payload_emits_agent_completion_tasks_for_missing_chinese_fields(self):
+        payload = {
+            "mode": "daily",
+            "date": "2026-04-24",
+            "count": 2,
+            "entries": [
+                {
+                    "id": "2604.33333",
+                    "title": "Needs Chinese Summary",
+                    "summary": "A robotics paper.",
+                },
+                {
+                    "id": "2604.33334",
+                    "title": "Already Complete",
+                    "summary": "Another robotics paper.",
+                    "one_liner_zh": "已有一句话。",
+                    "summary_cn": "已有中文摘要。",
+                },
+            ],
+        }
+        enriched = self.module.enrich_payload(payload)
+
+        agent_completion = enriched["agent_completion"]
+        self.assertTrue(agent_completion["required"])
+        self.assertEqual(agent_completion["task_count"], 1)
+        self.assertEqual(agent_completion["recommended_worker"], "arxiv-enrich-agent-completion")
+        task = agent_completion["tasks"][0]
+        self.assertEqual(task["arxiv_id"], "2604.33333")
+        self.assertIn("summary_cn", task["agent_summary_prompt"])
+        self.assertIn("one_liner_zh", task["agent_summary_prompt"])
+
+    def test_cli_reports_agent_completion_task_count(self):
+        payload = {
+            "mode": "search",
+            "count": 1,
+            "query": "robot policy",
+            "entries": [
+                {
+                    "id": "2604.44445",
+                    "title": "CLI Missing Chinese",
+                    "summary": "A robot policy paper without Chinese summary.",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = Path(tmpdir) / "input.json"
+            output_path = Path(tmpdir) / "output.json"
+            input_path.write_text(self.module.json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "enrich",
+                    "--input",
+                    str(input_path),
+                    "--output",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            summary = self.module.json.loads(result.stdout)
+            self.assertTrue(summary["agent_completion_required"])
+            self.assertEqual(summary["agent_completion_task_count"], 1)
 
     def test_build_payload_from_ids_uses_fetched_entries(self):
         original = self.module.fetch_entries_by_ids

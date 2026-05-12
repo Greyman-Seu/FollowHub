@@ -25,6 +25,12 @@ python3 skill/arxiv-daily/run_daily.py backfill --config followhub.yaml --from-d
 
 The agent must not improvise a different normal execution path when this orchestrator is available.
 
+The orchestrator is artifact-driven:
+
+- it may call tool-type skills such as `arxiv-collect`, `arxiv-enrich`, and `follow-publish`
+- it must not replace `arxiv-title-prefilter` or `arxiv-filter` with built-in heuristic Python decisions
+- when those worker-stage results are absent, it should stop and ask the invoking agent to complete the worker stage and write the required artifact
+
 ## Non-Negotiable Execution Contract
 
 For a normal daily run, the agent must execute these stages in order:
@@ -64,6 +70,7 @@ The agent must not:
 - `arxiv-enrich`
   - post-filter metadata completion for selected papers only
   - authors, affiliations, links, code/project URLs, English abstract normalization, score fields
+  - emits agent-completion tasks for papers still missing `one_liner_zh` or `summary_cn`
 - `follow-publish`
   - package and publish Follow JSON
 - `rcli`
@@ -86,9 +93,10 @@ The agent must not:
 11. Retry `arxiv-filter` for selected papers that still lack `one_liner_zh` or `summary_cn`.
 12. Build enrich inputs from `include_in_follow=true` papers only.
 13. Run `arxiv-enrich` on the selected subset only.
-14. Merge filter + enrich results into the final daily digest.
-15. Run `follow-publish`.
-16. Verify:
+14. If `arxiv-enrich` reports agent-completion tasks, the invoking agent must complete them before publish.
+15. Merge filter + enrich results into the final daily digest.
+16. Run `follow-publish`.
+17. Verify:
     - `follow/latest.json`
     - `follow/daily/YYYY-MM-DD.json`
     - `follow/sources/arxiv.json`
@@ -165,7 +173,8 @@ Each `arxiv-filter` worker returns:
 - Publish only `include_in_follow=true` papers.
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
-- If Chinese summary fields still remain missing after retry, the paper may still be published, but this should be treated as incomplete and tracked.
+- If fields are still missing after filter retry, `arxiv-enrich` should expose agent-completion tasks for those papers.
+- If the invoking agent does not complete those tasks, publishing may proceed only when the user accepts incomplete output.
 - If `listing_date != today` for a "today" run, default behavior is to skip publish rather than duplicate the previous listing.
 - R2 deletion and purge are not part of the daily path.
 
@@ -174,9 +183,10 @@ Each `arxiv-filter` worker returns:
 ```text
 arxiv-daily/run_daily.py
   -> arxiv-collect
-  -> arxiv-title-prefilter stage
-  -> arxiv-filter stage
+  -> writes prefilter_input.json, waits for arxiv-title-prefilter results
+  -> writes filter_input.json, waits for arxiv-filter results
   -> selected-only arxiv-enrich stage
+  -> agent completion for enrich-reported missing Chinese fields
   -> follow-publish
   -> rcli verification
 ```

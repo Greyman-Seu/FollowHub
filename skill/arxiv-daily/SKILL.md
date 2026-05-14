@@ -1,6 +1,6 @@
 ---
 name: arxiv-daily
-description: Use when the user asks for today's arXiv follow-up or missed-day arXiv backfill; this skill must execute the explicit collect -> title-prefilter -> filter -> enrich -> publish chain and must stop on missing required steps.
+description: Use when the user asks for today's arXiv follow-up or missed-day arXiv backfill; this skill is an agent-native workflow that must execute collect -> title-prefilter -> filter -> enrich -> publish in order.
 ---
 
 # arxiv-daily
@@ -9,27 +9,12 @@ Pipeline-level skill for daily arXiv follow-up.
 
 `arxiv-daily` owns orchestration. It must not replace required stages with manual shortlisting.
 
-## Required Entry Point
+`arxiv-daily` is a workflow skill, not a CLI-first skill.
 
-Normal daily execution must use the orchestrator:
-
-```bash
-python3 skill/arxiv-daily/run_daily.py daily --config followhub.yaml
-```
-
-Backfill execution must also use the orchestrator:
-
-```bash
-python3 skill/arxiv-daily/run_daily.py backfill --config followhub.yaml --from-date 2026-05-01 --to-date 2026-05-03
-```
-
-The agent must not improvise a different normal execution path when this orchestrator is available.
-
-The orchestrator is artifact-driven:
-
-- it may call tool-type skills such as `arxiv-collect`, `arxiv-enrich`, and `follow-publish`
-- it must not replace `arxiv-title-prefilter` or `arxiv-filter` with built-in heuristic Python decisions
-- when those worker-stage results are absent, it should stop and ask the invoking agent to complete the worker stage and write the required artifact
+- The primary entrypoint is this `SKILL.md`.
+- The invoking agent should read this file, collect context, and run the workflow directly.
+- Helper scripts may exist for artifact validation, merging, or local replay, but they are not the canonical user-facing entrypoint.
+- The agent must not reinterpret missing worker outputs as permission to skip `arxiv-title-prefilter` or `arxiv-filter`.
 
 ## Non-Negotiable Execution Contract
 
@@ -85,10 +70,10 @@ The agent must not:
 3. Confirm daily `listing_date`.
 4. If the target is "today" but `listing_date != today`, stop before publish by default.
 5. Build title-prefilter batches from the raw daily JSON.
-6. Run `arxiv-title-prefilter`, usually in batches.
+6. Use subagents or equivalent worker delegation to run `arxiv-title-prefilter`, usually in batches.
 7. Merge all prefilter outputs into `prefilter_results.json`.
 8. Build full filter batches from all `keep` and `uncertain` papers.
-9. Run `arxiv-filter`, usually in batches.
+9. Use subagents or equivalent worker delegation to run `arxiv-filter`, usually in batches.
 10. Merge all filter outputs into `filter_results.json`.
 11. Retry `arxiv-filter` for selected papers that still lack `one_liner_zh` or `summary_cn`.
 12. Build enrich inputs from `include_in_follow=true` papers only.
@@ -96,6 +81,8 @@ The agent must not:
 14. If `arxiv-enrich` reports agent-completion tasks, the invoking agent must complete them before publish.
 15. Merge filter + enrich results into the final daily digest.
 16. Run `follow-publish`.
+    - default behavior is to publish to R2 when the workflow succeeds
+    - only skip remote publish when the user explicitly asks for local-only output
 17. Verify:
     - `follow/latest.json`
     - `follow/daily/YYYY-MM-DD.json`
@@ -132,8 +119,19 @@ Recommended defaults:
   - batch `arxiv-filter` in groups of 3-5 papers
 - enrich only selected papers after filtering
 
-Subagents are optional optimization for `arxiv-title-prefilter`, `arxiv-filter`, and `arxiv-enrich`.
+Subagents are the recommended execution mode for `arxiv-title-prefilter` and `arxiv-filter`.
 The contract is stage order and artifacts, not a specific concurrency model.
+
+The invoking agent should normally:
+
+- split title-prefilter into batches
+- delegate those batches to workers
+- merge worker outputs into `prefilter_results.json`
+- split full-filter work into batches
+- delegate those batches to workers
+- merge worker outputs into `filter_results.json`
+
+If a local helper script is used, it should support this workflow rather than replace it with blocking "write this file and rerun" instructions.
 
 Each title-prefilter worker returns:
 
@@ -171,22 +169,24 @@ Each `arxiv-filter` worker returns:
 ## Publish Rules
 
 - Publish only `include_in_follow=true` papers.
+- Successful daily runs should publish to R2 by default.
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
 - If fields are still missing after filter retry, `arxiv-enrich` should expose agent-completion tasks for those papers.
 - If the invoking agent does not complete those tasks, publishing may proceed only when the user accepts incomplete output.
-- If `listing_date != today` for a "today" run, default behavior is to skip publish rather than duplicate the previous listing.
+- If `listing_date != today` for a "today" run, the agent should call that out clearly. Publishing may still proceed when the user asked to run today's available arXiv update or when `allow_stale_listing` is explicitly accepted.
 - R2 deletion and purge are not part of the daily path.
 
-## Current Orchestrator Surface
+## Helper Script Surface
 
 ```text
 arxiv-daily/run_daily.py
   -> arxiv-collect
-  -> writes prefilter_input.json, waits for arxiv-title-prefilter results
-  -> writes filter_input.json, waits for arxiv-filter results
+  -> may write prefilter/filter artifacts for local replay or validation
   -> selected-only arxiv-enrich stage
   -> agent completion for enrich-reported missing Chinese fields
   -> follow-publish
   -> rcli verification
 ```
+
+This script is a helper, not the primary contract.

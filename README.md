@@ -83,9 +83,10 @@ CLI 仍然保留，原因是：
 当前定位：
 
 - prompt-only pipeline skill
-- 不包含 Python 脚本
+- Python 脚本不是主入口
 - 指导 agent 调用：
   - `arxiv-collect`
+  - `arxiv-title-prefilter`
   - `arxiv-filter`
   - `arxiv-enrich`
   - `follow-publish`

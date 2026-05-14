@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Strict orchestrator for the arxiv-daily skill.
+"""Helper orchestrator for the arxiv-daily skill.
 
 This script enforces the required stage order:
 collect -> title-prefilter -> filter -> enrich -> publish -> verify
 
-Subagents are an optional optimization. The contract is stage order and
-required artifacts, not a specific concurrency model.
+The primary contract for arxiv-daily lives in SKILL.md. This helper is useful
+for local replay and artifact validation, but worker-stage execution is
+expected to happen at the agent layer.
 """
 
 from __future__ import annotations
@@ -34,6 +35,14 @@ SOURCE_ORDER = ["arxiv", "wechat", "x", "bilibili"]
 
 def fail(message: str) -> NoReturn:
     raise SystemExit(message)
+
+
+def missing_worker_results_message(stage: str, input_path: Path, output_path: Path) -> str:
+    return (
+        f"{output_path.name} is missing. "
+        f"Use the {stage} workflow via agent/subagent workers with {input_path}, "
+        f"write merged results to {output_path}, then rerun this helper."
+    )
 
 
 def stage_log(stage: str, message: str, **details: object) -> None:
@@ -610,7 +619,7 @@ def command_daily(args: argparse.Namespace) -> int:
     config = load_yaml(config_path)
     output_root = Path(args.output_root or DEFAULT_OUTPUT_ROOT)
     output_root.mkdir(parents=True, exist_ok=True)
-    stage_log("daily", "start", config=str(config_path), publish=bool(args.publish), output_root=str(output_root))
+    stage_log("daily", "start", config=str(config_path), publish=not bool(args.no_publish), output_root=str(output_root))
 
     raw_payload = collect_daily(config_path, output_root)
     run_date = str(raw_payload.get("date") or "")
@@ -620,10 +629,7 @@ def command_daily(args: argparse.Namespace) -> int:
     build_prefilter_input(raw_payload, config, paths.prefilter_input)
     if not paths.prefilter_results.exists():
         stage_log("prefilter", "awaiting-results", input_path=str(paths.prefilter_input), expected_results=str(paths.prefilter_results))
-        fail(
-            "prefilter_results.json is missing. "
-            f"Use {paths.prefilter_input} with the arxiv-title-prefilter skill, write results to {paths.prefilter_results}, then rerun."
-        )
+        fail(missing_worker_results_message("arxiv-title-prefilter", paths.prefilter_input, paths.prefilter_results))
     prefilter_payload = validate_prefilter_results(paths.prefilter_results, raw_payload)
     stage_log("prefilter", "results-loaded", results_path=str(paths.prefilter_results), item_count=len(prefilter_payload.get("items") or []))
 
@@ -631,10 +637,7 @@ def command_daily(args: argparse.Namespace) -> int:
     build_filter_input(raw_payload, filter_candidates, config, paths.filter_input)
     if not paths.filter_results.exists():
         stage_log("filter", "awaiting-results", input_path=str(paths.filter_input), expected_results=str(paths.filter_results))
-        fail(
-            "filter_results.json is missing. "
-            f"Use {paths.filter_input} with the arxiv-filter skill, write results to {paths.filter_results}, then rerun."
-        )
+        fail(missing_worker_results_message("arxiv-filter", paths.filter_input, paths.filter_results))
     filter_payload = validate_filter_results(paths.filter_results, [str(entry.get("id") or "") for entry in filter_candidates])
     stage_log("filter", "results-loaded", results_path=str(paths.filter_results), item_count=len(filter_payload.get("items") or []))
 
@@ -667,7 +670,7 @@ def command_daily(args: argparse.Namespace) -> int:
     digest_payload = build_digest(raw_payload, filter_payload, enrich_payload, domain_config, paths.digest_json)
     verify_publish_inputs(paths)
 
-    command = "publish-daily" if args.publish else "build-daily"
+    command = "build-daily" if args.no_publish else "publish-daily"
     stage_log("publish", "start", command=command, digest_json=str(paths.digest_json), output_dir=str(paths.publish_dir))
     run_command(
         [
@@ -702,7 +705,7 @@ def command_daily(args: argparse.Namespace) -> int:
                 "digest_json": str(paths.digest_json),
                 "publish_dir": str(paths.publish_dir),
                 "verify_json": str(paths.verify_json),
-                "published": bool(args.publish),
+                "published": not bool(args.no_publish),
                 "incomplete_summary_ids": missing_summary_ids,
             },
             ensure_ascii=False,
@@ -725,7 +728,7 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--date", default=today_string())
     daily.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     daily.add_argument("--allow-stale-listing", action="store_true")
-    daily.add_argument("--publish", action="store_true")
+    daily.add_argument("--no-publish", action="store_true")
     daily.set_defaults(func=command_daily)
 
     backfill = subparsers.add_parser("backfill")

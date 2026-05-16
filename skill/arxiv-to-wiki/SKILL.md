@@ -140,6 +140,31 @@ arxiv-to-wiki
 
 Use the extended path when the user wants structure maintenance, website sync, or R2 sync. Publish only after the package-facing check passes.
 
+
+## Data-Only Update Policy
+
+For normal wiki content updates, update the wiki data source and R2 package only.
+Do not commit repository code, generated page data, or submodule pointers unless the user explicitly asks to change code, layout, build scripts, schemas, or skill behavior.
+
+Default content-update path:
+
+```text
+source note / topic / synthesis update
+-> validate wiki
+-> build wiki package
+-> check package fields
+-> sync package to R2
+```
+
+Only use git commits for:
+
+- page UI/layout changes
+- skill or script changes
+- package/schema changes
+- explicit user request to commit repository state
+
+This should mirror Follow data updates: the website reads cloud data, while the repo stays stable.
+
 ## Execution Rules
 
 1. Resolve the input into one canonical arXiv paper reference.

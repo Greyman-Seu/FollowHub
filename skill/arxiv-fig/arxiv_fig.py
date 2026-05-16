@@ -25,6 +25,7 @@ import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
+from urllib.parse import urljoin
 
 import yaml
 from PIL import Image
@@ -496,7 +497,7 @@ def finalize_selected_figures(
 
 
 def fetch_html(arxiv_id: str):
-    """Fetch paper HTML from arxiv.org. Returns (html, url) or (None, None)."""
+    """Fetch paper HTML. Returns (html, final_url) or (None, None)."""
     for url in [
         f"https://arxiv.org/html/{arxiv_id}",
         f"https://arxiv.org/html/{arxiv_id}v1",
@@ -505,17 +506,17 @@ def fetch_html(arxiv_id: str):
             req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             resp = urllib.request.urlopen(req, timeout=15)
             if resp.status == 200:
-                return resp.read().decode(), url
+                return resp.read().decode(), resp.geturl() or url
         except Exception:
             pass
     return None, None
 
 
-def extract_figures_from_html(html: str, arxiv_id: str):
+def extract_figures_from_html(html: str, html_url: str):
     """Level 1: Extract figures from HTML <figure> tags."""
-    del arxiv_id
     figures_raw = re.findall(r"<figure[^>]*>.*?</figure>", html, re.DOTALL)
     figures = []
+    base_url = html_url if html_url.endswith("/") else f"{html_url}/"
 
     for i, fig in enumerate(figures_raw):
         img = re.search(r'<img[^>]*src="([^"]+)"', fig)
@@ -525,9 +526,7 @@ def extract_figures_from_html(html: str, arxiv_id: str):
         cap = re.search(r"<figcaption[^>]*>(.*?)</figcaption>", fig, re.DOTALL)
         cap_text = re.sub(r"<[^>]+>", "", cap.group(1)).strip() if cap else ""
 
-        src = img.group(1)
-        if not src.startswith("http"):
-            src = f"https://arxiv.org/html/{src}"
+        src = urljoin(base_url, img.group(1).strip())
 
         figures.append(
             {
@@ -951,7 +950,7 @@ def main(argv: list[str] | None = None) -> int:
 
     html, html_url = fetch_html(arxiv_id)
     if html:
-        figures = extract_figures_from_html(html, arxiv_id)
+        figures = extract_figures_from_html(html, html_url or f"https://arxiv.org/html/{arxiv_id}")
         if figures:
             source = "html"
 

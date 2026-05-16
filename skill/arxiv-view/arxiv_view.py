@@ -92,8 +92,19 @@ def parse_backfill_overview_markdown(text: str, base_dir: Path) -> List[Path]:
     return daily_files
 
 
+def as_str_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    return []
+
+
 def normalize_entry(entry: Dict[str, Any], *, source_mode: str, source_day: str = "") -> Dict[str, Any]:
-    affiliations = list(entry.get("affiliations") or [])
+    affiliations = as_str_list(entry.get("affiliations"))
     first_affiliation = entry.get("first_affiliation") or (affiliations[0] if affiliations else "")
     return {
         "arxiv_id": entry.get("id") or entry.get("arxiv_id") or "",
@@ -101,9 +112,11 @@ def normalize_entry(entry: Dict[str, Any], *, source_mode: str, source_day: str 
         "one_liner_zh": entry.get("one_liner_zh") or "",
         "summary_cn": entry.get("summary_cn") or entry.get("digest_zh") or "",
         "abstract_en": entry.get("abstract_en") or entry.get("summary") or entry.get("abstract") or "",
-        "authors": list(entry.get("authors") or []),
+        "authors": as_str_list(entry.get("authors")),
         "first_affiliation": first_affiliation,
         "affiliations": affiliations,
+        "related_organizations": as_str_list(entry.get("related_organizations")),
+        "related_companies": as_str_list(entry.get("related_companies")),
         "categories": list(entry.get("categories") or []),
         "published": entry.get("published") or "",
         "updated": entry.get("updated") or "",

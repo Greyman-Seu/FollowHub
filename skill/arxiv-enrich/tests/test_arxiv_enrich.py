@@ -60,6 +60,8 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["author_meta"][0]["name"], "Isabella Liu")
         self.assertTrue(enriched["author_meta"][0]["is_first_author"])
         self.assertEqual(enriched["author_meta"][0]["affiliations"], ["Stanford University"])
+        self.assertEqual(enriched["related_organizations"], ["Stanford University", "NVIDIA Research"])
+        self.assertEqual(enriched["related_companies"], ["NVIDIA Research"])
         self.assertTrue(enriched["code_urls"])
         self.assertTrue(enriched["project_urls"])
         self.assertFalse(enriched["needs_agent_summary"])
@@ -77,6 +79,10 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertEqual(enriched["one_liner_zh"], "")
         self.assertEqual(enriched["first_affiliation"], "")
         self.assertEqual(enriched["author_meta"], [])
+        self.assertEqual(enriched["related_organizations"], [])
+        self.assertEqual(enriched["related_companies"], [])
+        self.assertTrue(enriched["needs_related_organizations"])
+        self.assertIn("related_organizations", enriched["agent_organization_prompt"])
         self.assertEqual(enriched["code_urls"], [])
         self.assertEqual(enriched["project_urls"], [])
         self.assertEqual(enriched["citation_count"], 0)
@@ -232,6 +238,7 @@ favorites:
                     "summary": "Another robotics paper.",
                     "one_liner_zh": "已有一句话。",
                     "summary_cn": "已有中文摘要。",
+                    "related_organizations": ["Stanford University"],
                 },
             ],
         }
@@ -333,6 +340,8 @@ favorites:
         self.assertEqual(enriched["author_meta"][0]["affiliations"], ["Stanford University"])
         self.assertEqual(enriched["author_meta"][1]["name"], "Author B")
         self.assertEqual(enriched["author_meta"][1]["affiliations"], ["Google DeepMind"])
+        self.assertEqual(enriched["related_organizations"], ["Stanford University", "Google DeepMind"])
+        self.assertEqual(enriched["related_companies"], ["Google DeepMind"])
 
     def test_enrich_entry_uses_local_html_and_pdf_text_for_link_extraction(self):
         entry = {
@@ -380,6 +389,37 @@ favorites:
         self.assertIn("Google Research", enriched["affiliations"])
         self.assertEqual(enriched["author_meta"][0]["name"], "First Author")
         self.assertEqual(enriched["author_meta"][0]["affiliations"], ["CMU"])
+        self.assertEqual(enriched["related_organizations"], ["CMU", "Google Research"])
+        self.assertEqual(enriched["related_companies"], ["Google Research"])
+
+
+    def test_author_string_is_not_split_into_characters(self):
+        enriched = self.module.enrich_entry(
+            {
+                "id": "2604.16161",
+                "title": "Author String Example",
+                "summary": "A paper.",
+                "authors": "Charles Xu, Sergey Levine",
+                "summary_cn": "中文摘要。",
+                "one_liner_zh": "一句话。",
+                "related_organizations": ["UC Berkeley"],
+            }
+        )
+
+        self.assertEqual(enriched["authors"], ["Charles Xu, Sergey Levine"])
+        self.assertEqual(enriched["author_meta"][0]["name"], "Charles Xu, Sergey Levine")
+
+    def test_related_organizations_prefer_institution_names(self):
+        organizations = self.module.derive_related_organizations(
+            affiliations=[
+                "Department of Computer Science, Stanford University",
+                "Google DeepMind",
+                "School of AI, Peking University",
+            ]
+        )
+
+        self.assertEqual(organizations, ["Stanford University", "Google DeepMind", "Peking University"])
+        self.assertEqual(self.module.derive_related_companies(organizations), ["Google DeepMind"])
 
     def test_mark_corresponding_authors_requires_explicit_correspondence_signal(self):
         author_meta = [

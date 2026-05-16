@@ -83,6 +83,8 @@ class ArxivViewSkillTests(unittest.TestCase):
         self.assertEqual(first["summary_cn"], "该工作提出一个任务管理 VLM 与执行器解耦的长程操作框架。")
         self.assertEqual(first["first_affiliation"], "Stanford University")
         self.assertEqual(first["affiliations"][0], "Stanford University")
+        self.assertEqual(first["related_organizations"], ["Stanford University", "NVIDIA Research"])
+        self.assertEqual(first["related_companies"], ["NVIDIA Research"])
         self.assertEqual(first["hot_score"], 2.4)
         self.assertEqual(first["overall_score"], 4.6)
         self.assertEqual(first["recency_score"], 2.2)
@@ -99,6 +101,21 @@ class ArxivViewSkillTests(unittest.TestCase):
         self.assertEqual(second["matched_excludes"], ["survey"])
         self.assertEqual(second["favorite_ignores"], ["Medical"])
         self.assertTrue(second["is_ignored"])
+
+
+    def test_normalize_entry_does_not_split_author_string(self):
+        item = self.module.normalize_entry(
+            {
+                "id": "2604.16161",
+                "title": "String Author",
+                "authors": "Charles Xu, Sergey Levine",
+                "related_organizations": "UC Berkeley",
+            },
+            source_mode="search",
+        )
+
+        self.assertEqual(item["authors"], ["Charles Xu, Sergey Levine"])
+        self.assertEqual(item["related_organizations"], ["UC Berkeley"])
 
     def test_build_bundle_writes_static_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -71,6 +71,8 @@ class FollowPublishSkillTests(unittest.TestCase):
                                         "is_corresponding_author": False,
                                     }
                                 ],
+                                "related_organizations": ["Stanford University", "OpenAI"],
+                                "related_companies": ["OpenAI"],
                                 "domains": [{"slug": "llm-vlm", "name": "LLM/VLM"}],
                                 "links": [{"label": "Abs", "href": "https://arxiv.org/abs/1"}],
                             }
@@ -91,6 +93,36 @@ class FollowPublishSkillTests(unittest.TestCase):
             manifest = json.loads((Path(tmpdir) / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["latest_date"], "2026-05-02")
             self.assertEqual(manifest["sources"][0]["source"], "arxiv")
+            daily_file = json.loads((Path(tmpdir) / "daily" / "2026-05-02.json").read_text(encoding="utf-8"))
+            item = daily_file["sections"][0]["items"][0]
+            self.assertEqual(item["related_organizations"], ["Stanford University", "OpenAI"])
+            self.assertEqual(item["related_companies"], ["OpenAI"])
+
+
+    def test_validate_digest_does_not_split_author_string(self):
+        digest = self.module.validate_digest(
+            {
+                "date": "2026-05-03",
+                "sections": [
+                    {
+                        "source_type": "arxiv",
+                        "items": [
+                            {
+                                "id": "arxiv:string-authors",
+                                "title": "String Authors",
+                                "summary": "Summary",
+                                "authors": "Charles Xu, Sergey Levine",
+                                "related_organizations": "UC Berkeley",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        item = digest["sections"][0]["items"][0]
+        self.assertEqual(item["authors"], ["Charles Xu, Sergey Levine"])
+        self.assertEqual(item["related_organizations"], ["UC Berkeley"])
 
     def test_build_package_excludes_non_published_items_from_public_artifacts(self):
         digest = self.module.validate_digest(

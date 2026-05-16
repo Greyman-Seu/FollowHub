@@ -462,6 +462,8 @@ def can_reuse_enrich_results(path: Path, selected_ids: List[str]) -> bool:
             return False
         if not str(entry.get("summary_cn") or "").strip():
             return False
+        if not list(entry.get("related_organizations") or []):
+            return False
     return True
 
 
@@ -473,7 +475,7 @@ def ensure_enrich_agent_completion_done(enrich_payload: Dict[str, object], enric
     if tasks:
         fail(
             "arxiv-enrich reported pending agent completion tasks. "
-            f"Complete them and merge one_liner_zh/summary_cn into {enrich_results_path} before rerunning publish. "
+            f"Complete them and merge one_liner_zh/summary_cn/related_organizations into {enrich_results_path} before rerunning publish. "
             f"Pending tasks: {len(tasks)}"
         )
 
@@ -520,6 +522,8 @@ def build_digest(
                 "categories": list(enriched.get("categories") or []),
                 "author_meta": list(enriched.get("author_meta") or []),
                 "first_affiliation": str(enriched.get("first_affiliation") or ""),
+                "related_organizations": list(enriched.get("related_organizations") or []),
+                "related_companies": list(enriched.get("related_companies") or []),
                 "hjfy_url": str(enriched.get("hjfy_url") or ""),
                 "published": str(enriched.get("published") or ""),
                 "updated": str(enriched.get("updated") or ""),

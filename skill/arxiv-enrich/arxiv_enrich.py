@@ -75,6 +75,66 @@ AFFILIATION_HINTS = (
     "cmu",
     "nvidia",
 )
+ORGANIZATION_HINTS = AFFILIATION_HINTS + (
+    "openai",
+    "anthropic",
+    "meta",
+    "facebook",
+    "amazon",
+    "apple",
+    "tesla",
+    "xai",
+    "bytedance",
+    "alibaba",
+    "tencent",
+    "baidu",
+    "huawei",
+    "salesforce",
+    "adobe",
+    "toyota",
+    "waymo",
+    "figure ai",
+)
+COMPANY_HINTS = (
+    "microsoft",
+    "google",
+    "deepmind",
+    "openai",
+    "anthropic",
+    "meta",
+    "facebook",
+    "nvidia",
+    "amazon",
+    "apple",
+    "tesla",
+    "xai",
+    "bytedance",
+    "alibaba",
+    "tencent",
+    "baidu",
+    "huawei",
+    "salesforce",
+    "adobe",
+    "toyota",
+    "waymo",
+    "figure ai",
+)
+ORG_UNIT_PREFIXES = (
+    "department of",
+    "school of",
+    "faculty of",
+    "college of",
+    "center for",
+    "centre for",
+    "division of",
+)
+CANONICAL_ORGANIZATION_NAMES = {
+    "google deep mind": "Google DeepMind",
+    "deep mind": "DeepMind",
+    "open ai": "OpenAI",
+    "x ai": "xAI",
+    "byte dance": "ByteDance",
+}
 SCORE_MAX = 3.0
 RELEVANCE_TITLE_KEYWORD_BOOST = 0.5
 RELEVANCE_SUMMARY_KEYWORD_BOOST = 0.3
@@ -183,8 +243,90 @@ def _coerce_affiliations(value: Any) -> List[str]:
     return []
 
 
+def _coerce_string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    return []
+
+
+def _coerce_author_names(value: Any) -> List[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        text = re.sub(r"\s+", " ", value.strip())
+        if not text:
+            return []
+        if ";" in text or "|" in text or "\n" in text:
+            return [part.strip() for part in re.split(r"\s*;\s*|\s*\|\s*|\s*\n\s*", text) if part.strip()]
+        return [text]
+    return []
+
+
+def _looks_like_organization(value: str) -> bool:
+    lowered = value.lower()
+    return any(token in lowered for token in ORGANIZATION_HINTS)
+
+
+def _looks_like_unit_prefix(value: str) -> bool:
+    lowered = value.lower().strip()
+    return any(lowered.startswith(prefix) for prefix in ORG_UNIT_PREFIXES)
+
+
+def _canonical_organization_name(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", str(value or "").strip())
+    return CANONICAL_ORGANIZATION_NAMES.get(normalized.lower(), normalized)
+
+
+def _normalize_organization_name(value: str) -> str:
+    text = _cleanup_affiliation_text(str(value or ""))
+    text = re.sub(r"^[\d\W_]+", "", text).strip(" ,;:")
+    text = re.sub(r"\b[\w.+-]+@[\w.-]+\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" ,;:")
+    if not text:
+        return ""
+    parts = [part.strip(" ,;:") for part in re.split(r"\s*,\s*", text) if part.strip(" ,;:")]
+    organization_parts = [part for part in parts if _looks_like_organization(part)]
+    for part in reversed(organization_parts):
+        if not _looks_like_unit_prefix(part):
+            return _canonical_organization_name(part)
+    if organization_parts:
+        return _canonical_organization_name(organization_parts[-1])
+    return _canonical_organization_name(text) if _looks_like_organization(text) else ""
+
+
+def derive_related_organizations(
+    *,
+    existing: Any = None,
+    affiliations: Optional[List[str]] = None,
+    author_meta: Optional[List[Dict[str, Any]]] = None,
+) -> List[str]:
+    values: List[str] = []
+    values.extend(_coerce_string_list(existing))
+    for affiliation in affiliations or []:
+        values.append(affiliation)
+    for author in author_meta or []:
+        if isinstance(author, dict):
+            values.extend(_coerce_affiliations(author.get("affiliations")))
+    normalized = [_normalize_organization_name(value) for value in values]
+    return _dedup_keep_order([value for value in normalized if value])
+
+
+def derive_related_companies(organizations: List[str], existing: Any = None) -> List[str]:
+    values = _coerce_string_list(existing)
+    for organization in organizations:
+        lowered = organization.lower()
+        if any(token in lowered for token in COMPANY_HINTS):
+            values.append(organization)
+    return _dedup_keep_order(values)
+
+
 def build_author_meta(authors: Any, affiliations: List[str]) -> List[Dict[str, Any]]:
-    author_names = _listify(authors)
+    author_names = _coerce_author_names(authors)
     if not author_names:
         return []
     first_author_affiliations = affiliations[:1] if affiliations else []
@@ -529,6 +671,26 @@ def build_agent_translation_prompt(title: str, abstract_en: str) -> str:
     )
 
 
+def build_agent_organization_prompt(title: str, abstract_en: str, authors: List[str], source_type: str = "arxiv") -> str:
+    authors_text = ", ".join(authors)
+    return (
+        "Extract related organizations for this material.\n\n"
+        "Required output keys:\n"
+        "- related_organizations: a list of institution/company/lab names directly tied to the material\n"
+        "- related_companies: a list of company or industry lab names from related_organizations\n\n"
+        "Rules:\n"
+        "- For arXiv papers, prefer explicit author affiliations from the paper page, PDF, or reliable metadata\n"
+        "- For non-arXiv materials, extract organizations directly mentioned as creators, authors, publishers, labs, or companies\n"
+        "- Do not infer unsupported organizations from topic names or general domain knowledge\n"
+        "- Normalize names, e.g. Google DeepMind, Stanford University, NVIDIA Research\n"
+        "- Return empty lists if the material does not expose any organization\n\n"
+        f"Source type: {source_type}\n"
+        f"Title: {title}\n"
+        f"Authors: {authors_text}\n\n"
+        f"Abstract: {abstract_en}\n"
+    )
+
+
 def build_agent_one_liner_prompt(title: str, abstract_en: str) -> str:
     return (
         "Write one concise Chinese line for quick scanning.\n\n"
@@ -831,6 +993,7 @@ def enrich_entry(
         or semantic_scholar.get("abstract")
         or ""
     )
+    author_names = _coerce_author_names(enriched.get("authors"))
     summary_cn = enriched.get("summary_cn") or enriched.get("digest_zh") or ""
     one_liner_zh = enriched.get("one_liner_zh") or _first_sentence_zh(summary_cn)
     affiliations = _coerce_affiliations(enriched.get("affiliations"))
@@ -851,7 +1014,7 @@ def enrich_entry(
     if not author_meta and semantic_scholar:
         author_meta = build_author_meta_from_semantic_scholar(semantic_scholar)
     if not author_meta:
-        author_meta = build_author_meta(enriched.get("authors"), affiliations)
+        author_meta = build_author_meta(author_names, affiliations)
     author_meta = mark_corresponding_authors(
         author_meta,
         "\n".join(
@@ -875,6 +1038,12 @@ def enrich_entry(
     extracted_urls = extract_urls(url_source)
     code_urls = _dedup_keep_order(list(enriched.get("code_urls") or []) + extracted_urls["code_urls"])
     project_urls = _dedup_keep_order(list(enriched.get("project_urls") or []) + extracted_urls["project_urls"])
+    related_organizations = derive_related_organizations(
+        existing=enriched.get("related_organizations") or enriched.get("organizations"),
+        affiliations=affiliations,
+        author_meta=author_meta,
+    )
+    related_companies = derive_related_companies(related_organizations, enriched.get("related_companies"))
 
     citation_count = int(
         enriched.get(
@@ -933,12 +1102,15 @@ def enrich_entry(
             recency_score,
         )
 
+    enriched["authors"] = author_names
     enriched["abstract_en"] = abstract_en
     enriched["summary_cn"] = summary_cn
     enriched["one_liner_zh"] = one_liner_zh
     enriched["affiliations"] = affiliations
     enriched["author_meta"] = author_meta
     enriched["first_affiliation"] = first_affiliation
+    enriched["related_organizations"] = related_organizations
+    enriched["related_companies"] = related_companies
     enriched["code_urls"] = code_urls
     enriched["project_urls"] = project_urls
     enriched["citation_count"] = citation_count
@@ -959,6 +1131,17 @@ def enrich_entry(
     enriched["needs_agent_summary"] = not (one_liner_zh and summary_cn)
     enriched["needs_summary_cn_translation"] = not summary_cn
     enriched["needs_one_liner_zh"] = not one_liner_zh
+    enriched["needs_related_organizations"] = not related_organizations
+    enriched["agent_organization_prompt"] = (
+        build_agent_organization_prompt(
+            str(enriched.get("title") or ""),
+            abstract_en,
+            author_names,
+            str(enriched.get("source_type") or enriched.get("sourceType") or "arxiv"),
+        )
+        if enriched["needs_related_organizations"]
+        else ""
+    )
     enriched["agent_translation_prompt"] = (
         build_agent_translation_prompt(str(enriched.get("title") or ""), abstract_en)
         if not summary_cn
@@ -988,27 +1171,35 @@ def build_agent_completion_task(entry: Dict[str, Any]) -> Dict[str, Any]:
         "needs_agent_summary": bool(entry.get("needs_agent_summary", False)),
         "needs_summary_cn_translation": bool(entry.get("needs_summary_cn_translation", False)),
         "needs_one_liner_zh": bool(entry.get("needs_one_liner_zh", False)),
+        "needs_related_organizations": bool(entry.get("needs_related_organizations", False)),
         "agent_summary_prompt": str(entry.get("agent_summary_prompt") or ""),
         "agent_translation_prompt": str(entry.get("agent_translation_prompt") or ""),
         "agent_one_liner_prompt": str(entry.get("agent_one_liner_prompt") or ""),
+        "agent_organization_prompt": str(entry.get("agent_organization_prompt") or ""),
         "expected_output_schema": {
             "arxiv_id": str(entry.get("id") or ""),
             "one_liner_zh": "string",
             "summary_cn": "string",
+            "related_organizations": ["string"],
+            "related_companies": ["string"],
         },
     }
 
 
 def build_agent_completion(tasks_source: List[Dict[str, Any]]) -> Dict[str, Any]:
-    tasks = [build_agent_completion_task(entry) for entry in tasks_source if entry.get("needs_agent_summary")]
+    tasks = [
+        build_agent_completion_task(entry)
+        for entry in tasks_source
+        if entry.get("needs_agent_summary") or entry.get("needs_related_organizations")
+    ]
     return {
         "required": bool(tasks),
         "task_count": len(tasks),
         "recommended_batch_size": 3,
         "recommended_worker": "arxiv-enrich-agent-completion",
         "instructions": (
-            "Use agent or subagent workers to fill one_liner_zh and summary_cn for each task. "
-            "Preserve technical meaning, do not invent facts beyond the abstract, and return only structured fields."
+            "Use agent or subagent workers to fill one_liner_zh, summary_cn, and related_organizations when requested. "
+            "Preserve technical meaning, do not invent facts beyond the abstract/source metadata, and return only structured fields."
         ),
         "tasks": tasks,
     }
@@ -1060,8 +1251,8 @@ def enrich_payload(
             "recommended_batch_size": 3,
             "recommended_worker": "arxiv-enrich-agent-completion",
             "instructions": (
-                "Use agent or subagent workers to fill one_liner_zh and summary_cn for each task. "
-                "Preserve technical meaning, do not invent facts beyond the abstract, and return only structured fields."
+                "Use agent or subagent workers to fill one_liner_zh, summary_cn, and related_organizations when requested. "
+                "Preserve technical meaning, do not invent facts beyond the abstract/source metadata, and return only structured fields."
             ),
             "tasks": day_tasks,
         }

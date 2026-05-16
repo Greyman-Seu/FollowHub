@@ -83,6 +83,17 @@ def normalize_source_name(source: str) -> str:
     return mapping.get(source, source)
 
 
+def as_string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        text = value.strip()
+        return [text] if text else []
+    return []
+
+
 def normalize_importance(value: Any) -> str:
     raw = str(value or "").strip().lower()
     return raw if raw in IMPORTANCE_WEIGHT else "medium"
@@ -116,8 +127,8 @@ def validate_digest(digest: Dict[str, Any]) -> Dict[str, Any]:
                     "summary": str(item.get("summary") or "").strip(),
                     "importance": normalize_importance(item.get("importance")),
                     "include_in_follow": bool(item.get("include_in_follow", True)),
-                    "authors": [str(author).strip() for author in (item.get("authors") or []) if str(author).strip()],
-                    "categories": [str(category).strip() for category in (item.get("categories") or []) if str(category).strip()],
+                    "authors": as_string_list(item.get("authors")),
+                    "categories": as_string_list(item.get("categories")),
                     "author_meta": [
                         {
                             "name": str(author.get("name") or "").strip(),
@@ -129,6 +140,8 @@ def validate_digest(digest: Dict[str, Any]) -> Dict[str, Any]:
                         if str(author.get("name") or "").strip()
                     ],
                     "first_affiliation": str(item.get("first_affiliation") or "").strip(),
+                    "related_organizations": as_string_list(item.get("related_organizations")),
+                    "related_companies": as_string_list(item.get("related_companies")),
                     "hjfy_url": str(item.get("hjfy_url") or "").strip(),
                     "published": str(item.get("published") or "").strip(),
                     "updated": str(item.get("updated") or "").strip(),
@@ -267,6 +280,8 @@ def build_digest_from_arxiv_input(input_path: Path, domain_config: Dict[str, Any
                 "categories": list(item.get("categories") or []),
                 "author_meta": list(item.get("author_meta") or []),
                 "first_affiliation": item.get("first_affiliation") or "",
+                "related_organizations": as_string_list(item.get("related_organizations")),
+                "related_companies": as_string_list(item.get("related_companies")),
                 "hjfy_url": item.get("hjfy_url") or "",
                 "published": item.get("published") or "",
                 "updated": item.get("updated") or "",

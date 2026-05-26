@@ -1,0 +1,57 @@
+rss:
+  daily:
+    lookback_days: 7
+    max_items_per_source: 50
+
+  strict_date_only: true
+
+  keywords:
+    - robot
+    - robotics
+    - embodied
+    - manipulation
+    - vla
+    - llm
+    - vlm
+    - multimodal
+    - reasoning
+    - image generation
+    - video generation
+    - diffusion
+    - 机器人
+    - 具身
+    - 大模型
+    - 多模态
+    - 图像生成
+    - 视频生成
+
+  exclude_keywords:
+    - 广告
+    - 赞助
+    - 推广
+    - 软文
+    - 课程
+    - 训练营
+    - 招聘
+    - 报名
+    - 社群
+    - sponsor
+    - sponsored
+    - promo
+    - promotion
+    - course
+    - hiring
+
+  topic_context: |
+    关注机器人领域、视频/图像生成领域、大模型领域。
+    优先技术进展、论文解读、产品发布、demo、工程经验。
+    排除广告、软文、课程推广、招聘、社群运营内容。
+
+  sources:
+    - name: wechat-jiqizhixin
+      type: wechat
+      feed_url: https://wechat2rss.xlab.app/feed/51e92aad2728acdd1fda7314be32b16639353001.xml
+      tags:
+        - ai
+        - wechat
+        - news

@@ -1,0 +1,149 @@
+arxiv:
+  categories:
+    - cs.RO
+    - cs.AI
+    - cs.LG
+
+  keywords:
+    - vision-language-action
+    - VLA
+    - world model
+    - robot policy
+    - manipulation policy
+    - visuomotor policy
+    - robot manipulation
+    - policy learning
+    - action head
+    - model acceleration
+    - policy compression
+    - distillation
+
+  exclude_keywords:
+    - medical
+    - survey
+    - remote sensing
+    - change detection
+    - uav
+    - swarm
+    - aerial
+    - trajectory planning
+    - system design
+    - deployment system
+    - infrastructure
+
+  logic: AND
+
+  semantic_scholar_api_key: ""
+
+  topic_context: |
+    Robot manipulation and operation policy algorithms, especially VLA,
+    world-model-based control, vision-action / visuomotor policy learning,
+    long-horizon planning, model-side acceleration such as distillation,
+    compression, efficient training, and inference optimization for embodied
+    policy systems for robot manipulation. Do not prioritize UAV swarm control,
+    aerial planning, general system engineering, or infrastructure acceleration.
+
+  favorites:
+    enabled: true
+    keywords:
+      - VLA
+      - world model
+      - robot policy
+      - manipulation
+      - acceleration
+      - distillation
+      - compression
+    ignore_keywords:
+      - Medical
+      - Survey
+      - Infrastructure
+
+  daily:
+    new_submissions_only: true
+    max_results_per_day: 50
+
+  backfill:
+    generate_overview: true
+
+  search:
+    max_results: 50
+
+rss:
+  keywords:
+    - robot
+    - robotics
+    - embodied
+    - manipulation
+    - vla
+    - llm
+    - vlm
+    - multimodal
+    - reasoning
+    - image generation
+    - video generation
+    - diffusion
+    - 机器人
+    - 具身
+    - 大模型
+    - 多模态
+    - 图像生成
+    - 视频生成
+
+  exclude_keywords:
+    - 广告
+    - 赞助
+    - 推广
+    - 软文
+    - 课程
+    - 训练营
+    - 招聘
+    - 报名
+    - 社群
+    - sponsor
+    - sponsored
+    - promo
+    - promotion
+    - course
+    - hiring
+
+  topic_context: |
+    关注机器人领域、视频/图像生成领域、大模型领域。
+    优先技术进展、论文解读、产品发布、demo、工程经验。
+    排除广告、软文、课程推广、招聘、社群运营内容。
+
+  strict_date_only: false
+
+  daily:
+    lookback_days: 2
+    max_items_per_source: 30
+    history_lookback_days: 7
+
+  sources_file: rss_sources.yaml
+
+  sources: []
+
+follow:
+  domains:
+    llm-vlm:
+      name: LLM/VLM
+      description: 大模型、多模态大模型，包含推理、训练等。
+    physical-embodied-intelligence:
+      name: Physical/Embodied Intelligence
+      description: 物理/具身智能方向。
+    aigc:
+      name: AIGC
+      description: 图像、视频与语音生成方向。
+    agent:
+      name: Agent
+      description: 工具调用、规划执行、工作流编排与智能体系统设计。
+
+publish:
+  remote_prefix: follow
+  page_data_dir: submodules/page_github/src/data/generated/follow
+
+r2:
+  account_id: your-cloudflare-account-id
+  access_key_id: your-r2-access-key-id
+  secret_access_key: your-r2-secret-access-key
+  bucket: your-r2-bucket
+  public_base_url: https://your-public-follow-host.example.com

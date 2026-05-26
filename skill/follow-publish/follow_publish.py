@@ -394,6 +394,10 @@ def build_digest_summary(date_value: str, sections: Sequence[Dict[str, Any]], co
     source_types = [section.get("source_type") for section in sections if section.get("count")]
     if source_types and all(source == "arxiv" for source in source_types):
         return f"{date_value} arXiv daily selected {counts.get('arxiv', 0)} papers for follow-up."
+    if counts.get("arxiv", 0) and counts.get("wechat", 0):
+        return f"{date_value} Follow daily selected {counts.get('arxiv', 0)} arXiv paper(s) and {counts.get('wechat', 0)} WeChat item(s)."
+    if counts.get("wechat", 0) and not counts.get("arxiv", 0):
+        return f"{date_value} Follow daily selected {counts.get('wechat', 0)} WeChat item(s)."
     return original_summary
 
 
@@ -596,8 +600,6 @@ def merge_digests(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) 
         return validate_digest(incoming)
     merged = deepcopy(validate_digest(existing))
     next_digest = validate_digest(incoming)
-    merged["summary"] = next_digest["summary"] or merged["summary"]
-    merged["highlights"] = next_digest["highlights"] or merged["highlights"]
 
     sections_by_source = {section["source_type"]: deepcopy(section) for section in merged["sections"]}
     for next_section in next_digest["sections"]:
@@ -620,6 +622,13 @@ def merge_digests(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) 
         source: sum(section["count"] for section in merged["sections"] if section["source_type"] == source)
         for source in SOURCE_ORDER
     }
+    merged["summary"] = build_digest_summary(
+        merged["date"],
+        merged["sections"],
+        merged["counts"],
+        next_digest["summary"] or merged["summary"],
+    )
+    merged["highlights"] = build_digest_highlights_from_sections(merged["sections"])
     return merged
 
 

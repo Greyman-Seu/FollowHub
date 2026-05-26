@@ -332,12 +332,75 @@ class FollowPublishSkillTests(unittest.TestCase):
             }
         )
         merged = self.module.merge_digests(existing, incoming)
-        self.assertEqual(merged["summary"], "New summary")
+        self.assertEqual(
+            merged["summary"],
+            "2026-05-02 Follow daily selected 1 arXiv paper(s) and 1 WeChat item(s).",
+        )
         self.assertEqual(merged["counts"]["arxiv"], 1)
         self.assertEqual(merged["counts"]["wechat"], 1)
         self.assertEqual(len(merged["sections"]), 2)
         arxiv_section = [section for section in merged["sections"] if section["source_type"] == "arxiv"][0]
         self.assertEqual(arxiv_section["items"][0]["summary"], "New A")
+
+    def test_merge_digests_recomputes_summary_and_highlights_for_multi_source_day(self):
+        existing = self.module.validate_digest(
+            {
+                "date": "2026-05-26",
+                "summary": "2026-05-26 arXiv daily selected 1 papers for follow-up.",
+                "highlights": ["arxiv only"],
+                "counts": {"arxiv": 1, "wechat": 0, "x": 0, "bilibili": 0},
+                "sections": [
+                    {
+                        "source_type": "arxiv",
+                        "title": "arXiv",
+                        "items": [
+                            {
+                                "id": "arxiv:1",
+                                "title": "Arxiv A",
+                                "summary": "Arxiv summary",
+                                "importance": "high",
+                                "domains": [{"slug": "llm-vlm", "name": "LLM/VLM"}],
+                                "links": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        incoming = self.module.validate_digest(
+            {
+                "date": "2026-05-26",
+                "summary": "Selected 1 RSS stories for today.",
+                "highlights": ["wechat only"],
+                "counts": {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0},
+                "sections": [
+                    {
+                        "source_type": "wechat",
+                        "title": "WeChat",
+                        "items": [
+                            {
+                                "id": "wechat:1",
+                                "title": "Wechat A",
+                                "summary": "Wechat summary",
+                                "importance": "medium",
+                                "domains": [{"slug": "agent", "name": "Agent"}],
+                                "links": [],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        merged = self.module.merge_digests(existing, incoming)
+        self.assertEqual(
+            merged["summary"],
+            "2026-05-26 Follow daily selected 1 arXiv paper(s) and 1 WeChat item(s).",
+        )
+        self.assertEqual(merged["counts"]["arxiv"], 1)
+        self.assertEqual(merged["counts"]["wechat"], 1)
+        self.assertTrue(any("Arxiv A" in item for item in merged["highlights"]))
+        self.assertTrue(any("Wechat A" in item for item in merged["highlights"]))
 
     def test_build_package_can_sync_page_data_dir(self):
         digest = self.module.validate_digest(

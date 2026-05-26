@@ -35,3 +35,16 @@ arxiv_fig:
 
   # If rule-based matching is weak, record keyword suggestions for later tuning.
   low_confidence_threshold: 12
+
+rss:
+  # Keep large source lists in a separate file when subscriptions grow.
+  # Example: rss_sources.yaml
+  sources_file: rss_sources.yaml
+
+  daily:
+    # Keep only recent entries per source in the daily raw bundle.
+    lookback_days: 2
+    max_items_per_source: 50
+
+  # Small setups can inline sources here instead of using sources_file.
+  sources: []

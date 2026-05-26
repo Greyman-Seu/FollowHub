@@ -1,0 +1,62 @@
+# FollowHub RSS personal-use template
+#
+# Recommended usage:
+# 1. cp followhub.rss-personal.example.yaml followhub.yaml
+# 2. Fill only the RSS section first if you are testing RSS daily
+# 3. This template is tuned for personal WeChat-heavy subscriptions
+# 4. Keep your source list in rss_sources.yaml once subscriptions grow
+
+rss:
+  keywords:
+    - robot
+    - robotics
+    - embodied
+    - manipulation
+    - vla
+    - llm
+    - vlm
+    - multimodal
+    - reasoning
+    - image generation
+    - video generation
+    - diffusion
+    - 机器人
+    - 具身
+    - 大模型
+    - 多模态
+    - 图像生成
+    - 视频生成
+
+  exclude_keywords:
+    - 广告
+    - 赞助
+    - 推广
+    - 软文
+    - 课程
+    - 训练营
+    - 招聘
+    - 报名
+    - 社群
+    - sponsor
+    - sponsored
+    - promo
+    - promotion
+    - course
+    - hiring
+
+  topic_context: |
+    关注机器人领域、视频/图像生成领域、大模型领域。
+    优先技术进展、论文解读、产品发布、demo、工程经验。
+    排除广告、软文、课程推广、招聘、社群运营内容。
+
+  strict_date_only: true
+
+  daily:
+    lookback_days: 2
+    max_items_per_source: 30
+    history_lookback_days: 7
+
+  sources_file: rss_sources.yaml
+
+  # Small setups can inline sources here before moving to rss_sources.yaml.
+  sources: []

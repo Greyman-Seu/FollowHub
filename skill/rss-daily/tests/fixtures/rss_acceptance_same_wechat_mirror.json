@@ -1,0 +1,32 @@
+{
+  "name": "same_wechat_mirror",
+  "stage": "dedupe_cluster",
+  "items": [
+    {
+      "id": "wechat:1",
+      "source_type": "wechat",
+      "source_name": "feed-a",
+      "title": "Robot policy update",
+      "url": "https://mp.weixin.qq.com/s?__biz=abc&mid=123&idx=1&sn=xyz&utm_source=rss",
+      "published_at": "2026-05-18T09:00:00+00:00",
+      "content_text": "robot policy details"
+    },
+    {
+      "id": "wechat:2",
+      "source_type": "wechat",
+      "source_name": "feed-b",
+      "title": "Robot policy update mirror",
+      "url": "https://mp.weixin.qq.com/s?__biz=abc&mid=123&idx=1&sn=xyz",
+      "published_at": "2026-05-18T10:00:00+00:00",
+      "content_text": "longer robot policy details"
+    }
+  ],
+  "expected": {
+    "canonical_id": "wechat:abc:123:1:xyz",
+    "story_id": "story:wechat:abc:123:1:xyz",
+    "deduped_item_count": 1,
+    "story_count": 1,
+    "story_status": "repeat",
+    "mention_count": 2
+  }
+}

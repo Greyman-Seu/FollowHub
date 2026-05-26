@@ -355,9 +355,10 @@ class FollowPublishSkillTests(unittest.TestCase):
                                 "id": "wechat:1",
                                 "title": "Article",
                                 "summary": "Summary",
+                                "url": "https://mp.weixin.qq.com/s?__biz=abc&mid=123&idx=1&sn=xyz",
                                 "importance": "medium",
                                 "domains": [{"slug": "agent", "name": "Agent"}],
-                                "links": [{"label": "Article", "href": "https://example.com"}],
+                                "links": [{"label": "Mirror", "href": "https://example.com"}],
                             }
                         ],
                     }
@@ -372,6 +373,11 @@ class FollowPublishSkillTests(unittest.TestCase):
             )
             self.assertTrue((Path(page_dir) / "follow" / "manifest.json").exists())
             self.assertTrue((Path(page_dir) / "follow" / "sources" / "wechat.json").exists())
+            wechat_source = json.loads((Path(tmpdir) / "sources" / "wechat.json").read_text(encoding="utf-8"))
+            first_item = wechat_source["items"][0]
+            self.assertEqual(first_item["url"], "https://mp.weixin.qq.com/s?__biz=abc&mid=123&idx=1&sn=xyz")
+            hrefs = [link["href"] for link in first_item["links"]]
+            self.assertIn("https://mp.weixin.qq.com/s?__biz=abc&mid=123&idx=1&sn=xyz", hrefs)
 
     def test_build_digest_from_arxiv_input_generates_arxiv_digest(self):
         digest = self.module.build_digest_from_arxiv_input(

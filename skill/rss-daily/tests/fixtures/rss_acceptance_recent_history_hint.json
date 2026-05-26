@@ -1,0 +1,30 @@
+{
+  "name": "recent_history_hint",
+  "stage": "history_hint",
+  "entry": {
+    "id": "wechat:new",
+    "story_id": "story:wechat:abc:123:1:xyz",
+    "story_status": "followup",
+    "source_name": "feed-b"
+  },
+  "history": {
+    "story_id": "story:wechat:abc:123:1:xyz",
+    "seen_dates": ["2026-05-16"],
+    "last_seen_date": "2026-05-16",
+    "latest_story_status": "new",
+    "latest_title": "Older robot story",
+    "source_types": ["wechat"],
+    "source_names": ["feed-a"],
+    "max_mention_count": 2,
+    "publish_count": 1
+  },
+  "expected": {
+    "seen_recently": true,
+    "current_story_status": "followup",
+    "last_seen_date": "2026-05-16",
+    "latest_story_status": "new",
+    "history_source_overlap": false,
+    "history_publish_count": 1,
+    "history_max_mention_count": 2
+  }
+}

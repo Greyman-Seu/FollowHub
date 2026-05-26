@@ -119,12 +119,14 @@ def validate_digest(digest: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError(f"Unsupported source_type in digest section: {source_type!r}")
         items = []
         for item in section.get("items", []):
+            source_url = str(item.get("url") or "").strip()
             items.append(
                 {
                     "id": str(item.get("id") or "").strip(),
                     "source_type": source_type,
                     "title": str(item.get("title") or "").strip(),
                     "summary": str(item.get("summary") or "").strip(),
+                    "url": source_url,
                     "importance": normalize_importance(item.get("importance")),
                     "include_in_follow": bool(item.get("include_in_follow", True)),
                     "authors": as_string_list(item.get("authors")),
@@ -164,7 +166,12 @@ def validate_digest(digest: Dict[str, Any]) -> Dict[str, Any]:
                         {"label": str(link.get("label") or "").strip(), "href": str(link.get("href") or "").strip()}
                         for link in (item.get("links") or [])
                         if str(link.get("href") or "").strip()
-                    ],
+                    ]
+                    + (
+                        [{"label": "Article" if source_type == "wechat" else "Original", "href": source_url}]
+                        if source_url and not any(str(link.get("href") or "").strip() == source_url for link in (item.get("links") or []))
+                        else []
+                    ),
                 }
             )
         normalized["sections"].append(

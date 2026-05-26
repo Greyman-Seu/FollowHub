@@ -1,0 +1,37 @@
+{
+  "name": "followup_same_story",
+  "stage": "cluster",
+  "items": [
+    {
+      "id": "story:1",
+      "canonical_id": "url:https://example.com/original",
+      "source_type": "x",
+      "source_name": "feed-a",
+      "title": "Open model launch details",
+      "published_at": "2026-05-18T09:00:00+00:00",
+      "content_text": "Open model launch details from official account",
+      "duplicate_count": 0
+    },
+    {
+      "id": "story:2",
+      "canonical_id": "url:https://example.com/recap",
+      "source_type": "wechat",
+      "source_name": "feed-b",
+      "title": "Open model launch recap",
+      "published_at": "2026-05-18T12:00:00+00:00",
+      "content_text": "Open model launch details and recap analysis",
+      "duplicate_count": 0
+    }
+  ],
+  "expected": {
+    "story_count": 1,
+    "items": {
+      "story:1": {
+        "story_status": "new"
+      },
+      "story:2": {
+        "story_status": "followup"
+      }
+    }
+  }
+}

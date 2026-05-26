@@ -1,0 +1,37 @@
+sources:
+  # For personal use, start with a few WeChat feeds you trust.
+  # Add X / generic RSS later only if they consistently improve signal quality.
+  - name: wechat-jiqizhixin
+    type: wechat
+    feed_url: https://example.com/wechat/jiqizhixin.xml
+    tags:
+      - ai
+      - news
+
+  - name: wechat-qbitai
+    type: wechat
+    feed_url: https://example.com/wechat/qbitai.xml
+    tags:
+      - ai
+      - industry
+
+  - name: x-openai
+    type: x
+    feed_url: https://example.com/x/openai.xml
+    tags:
+      - llm
+      - model
+
+  - name: x-deepmind
+    type: x
+    feed_url: https://example.com/x/deepmind.xml
+    tags:
+      - research
+      - agent
+
+  - name: rss-hackernews-ai
+    type: rss
+    feed_url: https://example.com/rss/hackernews-ai.xml
+    tags:
+      - discussion
+      - community

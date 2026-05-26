@@ -82,6 +82,8 @@ The script already does rule-based scoring with `intent_keywords.yaml`. For Leve
 
 - HTML figures already have `image_url`; do not re-upload them.
 - Source/PDF figures are extracted locally first.
+- If a figure already has a stable remote URL, keep that URL and do not upload a duplicate copy.
+- Only figures extracted as local files from arXiv source bundles or PDFs should be uploaded to R2.
 - Only the matched local figures are uploaded.
 - When `--intent` contains multiple keywords, the script matches each keyword, merges the results, and uploads all unique matches.
 - Images are resized before upload so they stay readable while saving Cloudflare quota.
@@ -158,7 +160,9 @@ This section is for the agent's internal execution path. Prefer natural-language
 ```
 
 - Level 1: `image_url` is the original arXiv HTML asset URL.
+- Level 1 should be treated as `remote-original` storage.
 - Level 2 and 3 with Cloudflare configured: matched local figures get uploaded and `image_url` points at your custom domain.
+- Level 2 and 3 uploaded figures should be treated as `r2-uploaded` storage.
 - Level 2 and 3 without Cloudflare configured: `image_url` stays null and `image_path` stays local.
 - `source` is one of `html`, `arxiv_source`, `pdf`, or `none`.
 

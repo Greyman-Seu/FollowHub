@@ -409,6 +409,22 @@ favorites:
         self.assertEqual(enriched["authors"], ["Charles Xu, Sergey Levine"])
         self.assertEqual(enriched["author_meta"][0]["name"], "Charles Xu, Sergey Levine")
 
+    def test_author_names_normalize_comma_separated_person_names(self):
+        enriched = self.module.enrich_entry(
+            {
+                "id": "2604.17171",
+                "title": "Author Normalization Example",
+                "summary": "A paper.",
+                "authors": ["Liu, Isabella", "Levine, Sergey"],
+                "summary_cn": "中文摘要。",
+                "one_liner_zh": "一句话。",
+                "related_organizations": ["Stanford University"],
+            }
+        )
+        self.assertEqual(enriched["authors"], ["Isabella Liu", "Sergey Levine"])
+        self.assertEqual(enriched["author_meta"][0]["name"], "Isabella Liu")
+        self.assertEqual(enriched["author_meta"][1]["name"], "Sergey Levine")
+
     def test_related_organizations_prefer_institution_names(self):
         organizations = self.module.derive_related_organizations(
             affiliations=[
@@ -420,6 +436,16 @@ favorites:
 
         self.assertEqual(organizations, ["Stanford University", "Google DeepMind", "Peking University"])
         self.assertEqual(self.module.derive_related_companies(organizations), ["Google DeepMind"])
+
+    def test_related_organizations_split_multiple_labels_and_infer_companies(self):
+        organizations = self.module.derive_related_organizations(
+            existing='Stanford University; Google DeepMind | Physical Intelligence'
+        )
+        self.assertEqual(organizations, ["Stanford University", "Google DeepMind", "Physical Intelligence"])
+        self.assertEqual(
+            self.module.derive_related_companies(organizations),
+            ["Google DeepMind", "Physical Intelligence"],
+        )
 
     def test_mark_corresponding_authors_requires_explicit_correspondence_signal(self):
         author_meta = [

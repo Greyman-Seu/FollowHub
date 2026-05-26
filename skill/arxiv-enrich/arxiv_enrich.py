@@ -76,6 +76,7 @@ AFFILIATION_HINTS = (
     "nvidia",
 )
 ORGANIZATION_HINTS = AFFILIATION_HINTS + (
+    "physical intelligence",
     "openai",
     "anthropic",
     "meta",
@@ -96,14 +97,16 @@ ORGANIZATION_HINTS = AFFILIATION_HINTS + (
     "figure ai",
 )
 COMPANY_HINTS = (
-    "microsoft",
-    "google",
     "deepmind",
+    "google",
+    "nvidia",
+    "physical intelligence",
+    "toyota research institute",
     "openai",
+    "microsoft",
     "anthropic",
     "meta",
     "facebook",
-    "nvidia",
     "amazon",
     "apple",
     "tesla",
@@ -119,6 +122,7 @@ COMPANY_HINTS = (
     "waymo",
     "figure ai",
 )
+ORG_SPLIT_PATTERN = re.compile(r"[;；、\n|]+")
 ORG_UNIT_PREFIXES = (
     "department of",
     "school of",
@@ -255,16 +259,45 @@ def _coerce_string_list(value: Any) -> List[str]:
 
 
 def _coerce_author_names(value: Any) -> List[str]:
+    def normalize_person_name(text: Any) -> str:
+        raw = re.sub(r"\s+", " ", str(text or "").strip())
+        if not raw:
+            return ""
+        if raw.count(",") == 1:
+            left, right = [part.strip() for part in raw.split(",", 1)]
+            if left and right and " and " not in right.lower() and "," not in right and " " not in left:
+                return f"{right} {left}"
+        return raw
+
     if isinstance(value, (list, tuple)):
-        return [str(item).strip() for item in value if str(item).strip()]
+        return [normalize_person_name(item) for item in value if normalize_person_name(item)]
     if isinstance(value, str):
         text = re.sub(r"\s+", " ", value.strip())
         if not text:
             return []
         if ";" in text or "|" in text or "\n" in text:
-            return [part.strip() for part in re.split(r"\s*;\s*|\s*\|\s*|\s*\n\s*", text) if part.strip()]
-        return [text]
+            return [normalize_person_name(part) for part in re.split(r"\s*;\s*|\s*\|\s*|\s*\n\s*", text) if normalize_person_name(part)]
+        return [normalize_person_name(text)]
     return []
+
+
+def split_organization_labels(values: Any) -> List[str]:
+    if isinstance(values, str):
+        raw_values = [values]
+    elif isinstance(values, (list, tuple)):
+        raw_values = [str(value) for value in values]
+    else:
+        raw_values = []
+
+    labels: List[str] = []
+    for raw in raw_values:
+        for part in ORG_SPLIT_PATTERN.split(str(raw or "")):
+            value = part.strip().strip('"')
+            if not value or value.lower() in {"none", "n/a", "unknown"} or value.startswith("暂无"):
+                continue
+            if value not in labels:
+                labels.append(value)
+    return labels
 
 
 def _looks_like_organization(value: str) -> bool:
@@ -306,18 +339,18 @@ def derive_related_organizations(
     author_meta: Optional[List[Dict[str, Any]]] = None,
 ) -> List[str]:
     values: List[str] = []
-    values.extend(_coerce_string_list(existing))
+    values.extend(split_organization_labels(existing))
     for affiliation in affiliations or []:
         values.append(affiliation)
     for author in author_meta or []:
         if isinstance(author, dict):
-            values.extend(_coerce_affiliations(author.get("affiliations")))
+            values.extend(split_organization_labels(author.get("affiliations")))
     normalized = [_normalize_organization_name(value) for value in values]
     return _dedup_keep_order([value for value in normalized if value])
 
 
 def derive_related_companies(organizations: List[str], existing: Any = None) -> List[str]:
-    values = _coerce_string_list(existing)
+    values = split_organization_labels(existing)
     for organization in organizations:
         lowered = organization.lower()
         if any(token in lowered for token in COMPANY_HINTS):

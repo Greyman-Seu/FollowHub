@@ -375,6 +375,7 @@ def validate_filter_results(path: Path, allowed_ids: List[str]) -> Dict[str, obj
 
 def build_enrich_input(raw_payload: Dict[str, object], filter_payload: Dict[str, object], output_path: Path) -> Dict[str, object]:
     entries_by_id = {str(entry.get("id") or ""): dict(entry) for entry in (raw_payload.get("entries") or [])}
+    filter_by_id = {str(item.get("arxiv_id") or ""): dict(item) for item in (filter_payload.get("items") or [])}
     selected_ids = []
     rows = []
     for item in filter_payload.get("items", []):
@@ -383,6 +384,17 @@ def build_enrich_input(raw_payload: Dict[str, object], filter_payload: Dict[str,
             entry = entries_by_id.get(arxiv_id)
             if entry is None:
                 fail(f"Filter selected unknown arxiv_id for enrich: {arxiv_id}")
+            filter_row = filter_by_id.get(arxiv_id, {})
+            # Carry forward agent-reviewed Chinese fields so arxiv-enrich does not
+            # incorrectly emit completion tasks for already-complete entries.
+            if str(filter_row.get("one_liner_zh") or "").strip():
+                entry["one_liner_zh"] = str(filter_row.get("one_liner_zh") or "").strip()
+            if str(filter_row.get("summary_cn") or "").strip():
+                entry["summary_cn"] = str(filter_row.get("summary_cn") or "").strip()
+            if list(filter_row.get("domains") or []):
+                entry["domains"] = list(filter_row.get("domains") or [])
+            if str(filter_row.get("reason") or "").strip():
+                entry["filter_reason"] = str(filter_row.get("reason") or "").strip()
             selected_ids.append(arxiv_id)
             rows.append(entry)
     payload = {
@@ -462,8 +474,6 @@ def can_reuse_enrich_results(path: Path, selected_ids: List[str]) -> bool:
             return False
         if not str(entry.get("summary_cn") or "").strip():
             return False
-        if not list(entry.get("related_organizations") or []):
-            return False
     return True
 
 
@@ -471,7 +481,13 @@ def ensure_enrich_agent_completion_done(enrich_payload: Dict[str, object], enric
     agent_completion = enrich_payload.get("agent_completion") or {}
     if not isinstance(agent_completion, dict):
         return
-    tasks = list(agent_completion.get("tasks") or [])
+    tasks = [
+        task
+        for task in list(agent_completion.get("tasks") or [])
+        if bool(task.get("needs_agent_summary", False))
+        or bool(task.get("needs_summary_cn_translation", False))
+        or bool(task.get("needs_one_liner_zh", False))
+    ]
     if tasks:
         fail(
             "arxiv-enrich reported pending agent completion tasks. "

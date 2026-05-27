@@ -402,6 +402,28 @@ class FollowPublishSkillTests(unittest.TestCase):
         self.assertTrue(any("Arxiv A" in item for item in merged["highlights"]))
         self.assertTrue(any("Wechat A" in item for item in merged["highlights"]))
 
+    def test_build_digest_highlights_preserves_multi_source_coverage(self):
+        sections = [
+            {
+                "source_type": "arxiv",
+                "title": "arXiv",
+                "items": [
+                    {"id": "arxiv:1", "title": "Arxiv A", "summary": "A", "importance": "high", "overall_score": 3.0},
+                    {"id": "arxiv:2", "title": "Arxiv B", "summary": "B", "importance": "high", "overall_score": 2.8},
+                ],
+            },
+            {
+                "source_type": "wechat",
+                "title": "WeChat",
+                "items": [
+                    {"id": "wechat:1", "title": "Wechat A", "summary": "W", "importance": "medium", "overall_score": 0.0},
+                ],
+            },
+        ]
+        highlights = self.module.build_digest_highlights_from_sections(sections)
+        self.assertTrue(any("Arxiv A" in item for item in highlights))
+        self.assertTrue(any("Wechat A" in item for item in highlights))
+
     def test_build_package_can_sync_page_data_dir(self):
         digest = self.module.validate_digest(
             {

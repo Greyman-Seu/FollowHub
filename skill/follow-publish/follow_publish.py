@@ -383,11 +383,45 @@ def _is_meaningful_chinese(text: str) -> bool:
 
 
 def build_digest_highlights_from_sections(sections: Sequence[Dict[str, Any]]) -> List[str]:
-    items = []
+    highlighted = []
+    seen_ids = set()
+
+    # First pass: ensure each active source can contribute one representative highlight.
     for section in sections:
-        items.extend(section.get("items", []))
-    ranked = sorted(items, key=lambda item: (IMPORTANCE_WEIGHT[item["importance"]], item.get("overall_score", 0)), reverse=True)
-    return [f"{item['title']}: {item['summary']}" for item in ranked[:3]]
+        items = list(section.get("items", []))
+        if not items:
+            continue
+        ranked_section = sorted(
+            items,
+            key=lambda item: (IMPORTANCE_WEIGHT[item["importance"]], item.get("overall_score", 0)),
+            reverse=True,
+        )
+        top_item = ranked_section[0]
+        item_id = str(top_item.get("id") or "")
+        if item_id and item_id not in seen_ids:
+            highlighted.append(top_item)
+            seen_ids.add(item_id)
+
+    # Second pass: fill remaining slots globally by score.
+    all_items = []
+    for section in sections:
+        all_items.extend(section.get("items", []))
+    ranked_all = sorted(
+        all_items,
+        key=lambda item: (IMPORTANCE_WEIGHT[item["importance"]], item.get("overall_score", 0)),
+        reverse=True,
+    )
+    for item in ranked_all:
+        if len(highlighted) >= 3:
+            break
+        item_id = str(item.get("id") or "")
+        if item_id and item_id in seen_ids:
+            continue
+        highlighted.append(item)
+        if item_id:
+            seen_ids.add(item_id)
+
+    return [f"{item['title']}: {item['summary']}" for item in highlighted[:3]]
 
 
 def build_digest_summary(date_value: str, sections: Sequence[Dict[str, Any]], counts: Dict[str, int], original_summary: str) -> str:

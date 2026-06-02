@@ -344,6 +344,33 @@ def repair_missing_summary_fields(
     return filter_payload
 
 
+def repair_missing_follow_metadata(
+    *,
+    filter_payload: Dict[str, object],
+    enrich_payload: Dict[str, object],
+) -> Dict[str, object]:
+    changed = False
+    enrich_by_id = {str(entry.get("id") or ""): entry for entry in (enrich_payload.get("entries") or [])}
+    for item in filter_payload.get("items", []):
+        if not bool(item.get("include_in_follow", False)):
+            continue
+        arxiv_id = str(item.get("arxiv_id") or "")
+        enriched = enrich_by_id.get(arxiv_id, {})
+        for key in ("related_organizations", "related_companies", "author_meta"):
+            if item.get(key):
+                continue
+            value = enriched.get(key)
+            if value:
+                item[key] = value
+                changed = True
+        if not str(item.get("first_affiliation") or "").strip():
+            first_affiliation = str(enriched.get("first_affiliation") or "").strip()
+            if first_affiliation:
+                item["first_affiliation"] = first_affiliation
+                changed = True
+    return filter_payload
+
+
 def collect_missing_summary_fields(filter_payload: Dict[str, object]) -> List[str]:
     missing = []
     for item in filter_payload.get("items", []):
@@ -420,6 +447,7 @@ def run_enrich(config_path: Path, enrich_input_path: Path, output_path: Path) ->
             str(enrich_input_path),
             "--profile",
             str(config_path),
+            "--enable-external-metadata",
             "--output",
             str(output_path),
         ],
@@ -487,11 +515,12 @@ def ensure_enrich_agent_completion_done(enrich_payload: Dict[str, object], enric
         if bool(task.get("needs_agent_summary", False))
         or bool(task.get("needs_summary_cn_translation", False))
         or bool(task.get("needs_one_liner_zh", False))
+        or bool(task.get("needs_related_organizations", False))
     ]
     if tasks:
         fail(
             "arxiv-enrich reported pending agent completion tasks. "
-            f"Complete them and merge one_liner_zh/summary_cn/related_organizations into {enrich_results_path} before rerunning publish. "
+            f"Complete them and merge one_liner_zh/summary_cn/related_organizations/related_companies into {enrich_results_path} before rerunning publish. "
             f"Pending tasks: {len(tasks)}"
         )
 
@@ -682,6 +711,7 @@ def command_daily(args: argparse.Namespace) -> int:
         stage_log("enrich", "skipped", reason="no selected papers")
 
     filter_payload = repair_missing_summary_fields(filter_payload=filter_payload, enrich_payload=enrich_payload)
+    filter_payload = repair_missing_follow_metadata(filter_payload=filter_payload, enrich_payload=enrich_payload)
     write_json(paths.filter_results, filter_payload)
     missing_summary_ids = collect_missing_summary_fields(filter_payload)
     stage_log("filter", "post-enrich-merge", missing_summary_count=len(missing_summary_ids))

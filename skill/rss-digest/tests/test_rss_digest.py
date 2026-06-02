@@ -45,6 +45,9 @@ class RssDigestTests(unittest.TestCase):
                         }
                     ],
                     "domains": [{"slug": "agent", "name": "Agent"}],
+                    "related_organizations": ["Stanford University"],
+                    "related_companies": ["OpenAI"],
+                    "key_people": ["Sergey Levine"],
                     "include_in_digest": True,
                 },
                 {
@@ -79,6 +82,9 @@ class RssDigestTests(unittest.TestCase):
         self.assertEqual(story["source_names"], ["feed-b", "feed-c"])
         self.assertEqual(story["mention_count"], 3)
         self.assertEqual(story["summary"], "机器人策略更新。")
+        self.assertEqual(story["related_organizations"], ["Stanford University"])
+        self.assertEqual(story["related_companies"], ["OpenAI"])
+        self.assertEqual(story["key_people"], ["Sergey Levine"])
         self.assertEqual(len(digest["sections"]), 1)
         self.assertEqual(digest["sections"][0]["count"], 1)
 

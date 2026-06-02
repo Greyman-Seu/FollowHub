@@ -31,7 +31,7 @@ class RssEnrichSkillTests(unittest.TestCase):
                     "id": "wechat:1",
                     "title": "Example",
                     "summary": "This is an example summary.",
-                    "content_text": "This is an example content body.",
+                    "content_text": "This is an example content body about Stanford University and researcher Sergey Levine.",
                 }
             ]
         }
@@ -39,6 +39,30 @@ class RssEnrichSkillTests(unittest.TestCase):
         self.assertEqual(len(enriched["entries"]), 1)
         self.assertTrue(enriched["agent_completion"]["required"])
         self.assertEqual(enriched["agent_completion"]["task_count"], 1)
+        self.assertIn("related_organizations", enriched["agent_completion"]["tasks"][0]["expected_output_schema"])
+        self.assertIn("key_people", enriched["agent_completion"]["tasks"][0]["expected_output_schema"])
+
+    def test_enrich_payload_preserves_entity_fields(self):
+        payload = {
+            "items": [
+                {
+                    "id": "wechat:1",
+                    "title": "Example",
+                    "summary": "This is an example summary.",
+                    "content_text": "This is an example content body.",
+                    "one_liner_zh": "一句话。",
+                    "summary_cn": "中文摘要。",
+                    "related_organizations": ["Stanford University"],
+                    "related_companies": ["OpenAI"],
+                    "key_people": ["Sergey Levine"],
+                }
+            ]
+        }
+        enriched = self.module.enrich_payload(payload)
+        entry = enriched["entries"][0]
+        self.assertEqual(entry["related_organizations"], ["Stanford University"])
+        self.assertEqual(entry["related_companies"], ["OpenAI"])
+        self.assertEqual(entry["key_people"], ["Sergey Levine"])
 
     def test_enrich_payload_skips_agent_completion_when_fields_present(self):
         payload = {

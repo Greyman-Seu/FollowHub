@@ -1,4 +1,5 @@
 import importlib.util
+from http.client import IncompleteRead
 import subprocess
 import sys
 import tempfile
@@ -157,6 +158,35 @@ class ArxivCollectSkillTests(unittest.TestCase):
 
         self.assertEqual(parsed.listing_date, date(2026, 4, 24))
         self.assertEqual(parsed.new_submission_ids, ["2604.20893", "2604.20894"])
+
+    def test_fetch_text_retries_on_incomplete_read(self):
+        original_urlopen = self.module.urllib.request.urlopen
+        calls = {"count": 0}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b"ok"
+
+        def fake_urlopen(_request, timeout=45):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise IncompleteRead(b"partial", 10)
+            return FakeResponse()
+
+        try:
+            self.module.urllib.request.urlopen = fake_urlopen
+            result = self.module.fetch_text("https://example.com")
+        finally:
+            self.module.urllib.request.urlopen = original_urlopen
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls["count"], 2)
 
     def test_build_api_query_supports_keywords_categories_and_excludes(self):
         query = self.module.build_api_query(

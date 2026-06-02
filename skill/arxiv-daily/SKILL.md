@@ -55,7 +55,7 @@ The agent must not:
 - `arxiv-enrich`
   - post-filter metadata completion for selected papers only
   - authors, affiliations, links, code/project URLs, English abstract normalization, score fields
-  - emits agent-completion tasks for papers still missing `one_liner_zh` or `summary_cn`
+  - emits agent-completion tasks for papers still missing `one_liner_zh`, `summary_cn`, or organization metadata
 - `follow-publish`
   - package and publish Follow JSON
 - `rcli`
@@ -172,8 +172,8 @@ Each `arxiv-filter` worker returns:
 - Successful daily runs should publish to R2 by default.
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
-- If fields are still missing after filter retry, `arxiv-enrich` should expose agent-completion tasks for those papers.
-- If the invoking agent does not complete those tasks, publishing may proceed only when the user accepts incomplete output.
+- If fields are still missing after filter retry, or organization metadata is still missing after enrich, `arxiv-enrich` should expose agent-completion tasks for those papers.
+- For arXiv daily publish, unresolved agent-completion tasks block publish by default.
 - If `listing_date != today` for a "today" run, the agent should call that out clearly. Publishing may still proceed when the user asked to run today's available arXiv update or when `allow_stale_listing` is explicitly accepted.
 - R2 deletion and purge are not part of the daily path.
 

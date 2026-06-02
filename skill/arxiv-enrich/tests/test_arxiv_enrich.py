@@ -67,6 +67,45 @@ class ArxivEnrichSkillTests(unittest.TestCase):
         self.assertFalse(enriched["needs_agent_summary"])
         self.assertEqual(enriched["agent_summary_prompt"], "")
 
+    def test_enrich_entry_normalizes_comma_separated_author_names(self):
+        entry = {
+            "id": "2605.24592",
+            "title": "MuGen",
+            "summary": "A humanoid locomotion paper.",
+            "authors": ["Feng, Yusen", "Wang, Xiang"],
+            "author_meta": [
+                {"name": "Feng, Yusen", "affiliations": [], "is_first_author": True, "is_corresponding_author": False},
+                {"name": "Wang, Xiang", "affiliations": [], "is_first_author": False, "is_corresponding_author": False},
+            ],
+        }
+        enriched = self.module.enrich_entry(entry)
+        self.assertEqual(enriched["authors"], ["Yusen Feng", "Xiang Wang"])
+        self.assertEqual(enriched["author_meta"][0]["name"], "Yusen Feng")
+        self.assertEqual(enriched["author_meta"][1]["name"], "Xiang Wang")
+
+    def test_enrich_entry_merges_semantic_scholar_affiliations_into_existing_author_meta(self):
+        entry = {
+            "id": "2605.24592",
+            "title": "MuGen",
+            "summary": "A humanoid locomotion paper.",
+            "authors": ["Feng, Yusen", "Wang, Xiang"],
+            "author_meta": [
+                {"name": "Feng, Yusen", "affiliations": [], "is_first_author": True, "is_corresponding_author": False},
+                {"name": "Wang, Xiang", "affiliations": [], "is_first_author": False, "is_corresponding_author": False},
+            ],
+            "semantic_scholar": {
+                "authors": [
+                    {"name": "Yusen Feng", "affiliations": [{"name": "Zhejiang University"}]},
+                    {"name": "Xiang Wang", "affiliations": [{"name": "Shanghai AI Laboratory"}]},
+                ]
+            },
+        }
+        enriched = self.module.enrich_entry(entry)
+        self.assertEqual(enriched["author_meta"][0]["name"], "Yusen Feng")
+        self.assertEqual(enriched["author_meta"][0]["affiliations"], ["Zhejiang University"])
+        self.assertEqual(enriched["author_meta"][1]["affiliations"], ["Shanghai AI Laboratory"])
+        self.assertIn("Zhejiang University", enriched["related_organizations"])
+
     def test_enrich_entry_creates_empty_contract_fields_when_missing(self):
         entry = {
             "id": "2604.11111",

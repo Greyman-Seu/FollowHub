@@ -258,17 +258,18 @@ def _coerce_string_list(value: Any) -> List[str]:
     return []
 
 
-def _coerce_author_names(value: Any) -> List[str]:
-    def normalize_person_name(text: Any) -> str:
-        raw = re.sub(r"\s+", " ", str(text or "").strip())
-        if not raw:
-            return ""
-        if raw.count(",") == 1:
-            left, right = [part.strip() for part in raw.split(",", 1)]
-            if left and right and " and " not in right.lower() and "," not in right and " " not in left:
-                return f"{right} {left}"
-        return raw
+def normalize_person_name(text: Any) -> str:
+    raw = re.sub(r"\s+", " ", str(text or "").strip())
+    if not raw:
+        return ""
+    if raw.count(",") == 1:
+        left, right = [part.strip() for part in raw.split(",", 1)]
+        if left and right and " and " not in right.lower() and "," not in right and " " not in left:
+            return f"{right} {left}"
+    return raw
 
+
+def _coerce_author_names(value: Any) -> List[str]:
     if isinstance(value, (list, tuple)):
         return [normalize_person_name(item) for item in value if normalize_person_name(item)]
     if isinstance(value, str):
@@ -380,10 +381,10 @@ def build_author_meta_from_semantic_scholar(metadata: Dict[str, Any]) -> List[Di
     items = []
     for index, author in enumerate(metadata.get("authors") or []):
         if isinstance(author, dict):
-            name = str(author.get("name") or "").strip()
+            name = normalize_person_name(author.get("name"))
             raw_affiliations = author.get("affiliations") or []
         else:
-            name = str(author).strip()
+            name = normalize_person_name(author)
             raw_affiliations = []
         if not name:
             continue
@@ -404,6 +405,60 @@ def build_author_meta_from_semantic_scholar(metadata: Dict[str, Any]) -> List[Di
             }
         )
     return items
+
+
+def normalize_author_meta(author_meta: Any) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for index, author in enumerate(author_meta or []):
+        if not isinstance(author, dict):
+            continue
+        name = normalize_person_name(author.get("name"))
+        if not name:
+            continue
+        items.append(
+            {
+                "name": name,
+                "affiliations": _dedup_keep_order(_coerce_affiliations(author.get("affiliations"))),
+                "is_first_author": bool(author.get("is_first_author", index == 0)),
+                "is_corresponding_author": bool(author.get("is_corresponding_author", False)),
+            }
+        )
+    return items
+
+
+def author_meta_has_affiliations(author_meta: List[Dict[str, Any]]) -> bool:
+    return any(_coerce_affiliations(author.get("affiliations")) for author in author_meta if isinstance(author, dict))
+
+
+def merge_author_meta_affiliations(
+    existing: List[Dict[str, Any]],
+    inferred: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    existing_items = normalize_author_meta(existing)
+    inferred_items = normalize_author_meta(inferred)
+    if not existing_items:
+        return inferred_items
+    if not inferred_items:
+        return existing_items
+
+    inferred_by_name = {str(item.get("name") or "").lower(): item for item in inferred_items}
+    merged: List[Dict[str, Any]] = []
+    for index, author in enumerate(existing_items):
+        match = inferred_by_name.get(str(author.get("name") or "").lower())
+        if match is None and index < len(inferred_items):
+            match = inferred_items[index]
+        affiliations = list(author.get("affiliations") or [])
+        if not affiliations and match:
+            affiliations = list(match.get("affiliations") or [])
+        merged.append(
+            {
+                "name": str(author.get("name") or (match or {}).get("name") or "").strip(),
+                "affiliations": _dedup_keep_order(_coerce_affiliations(affiliations)),
+                "is_first_author": bool(author.get("is_first_author", False)),
+                "is_corresponding_author": bool(author.get("is_corresponding_author", False) or (match or {}).get("is_corresponding_author", False)),
+            }
+        )
+    return merged
 
 
 def mark_corresponding_authors(author_meta: List[Dict[str, Any]], text: str) -> List[Dict[str, Any]]:
@@ -902,7 +957,7 @@ def fetch_semantic_scholar_metadata(
     timeout: int = 15,
     limit: int = 3,
 ) -> Dict[str, Any]:
-    if not api_key or not title.strip():
+    if not title.strip():
         return {}
 
     params = urllib.parse.urlencode(
@@ -912,13 +967,15 @@ def fetch_semantic_scholar_metadata(
             "fields": SEMANTIC_SCHOLAR_FIELDS,
         }
     )
+    headers = {
+        "User-Agent": "followhub-arxiv-enrich/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
+        "Accept": "application/json",
+    }
+    if api_key:
+        headers["x-api-key"] = api_key
     request = urllib.request.Request(
         f"{SEMANTIC_SCHOLAR_API_URL}?{params}",
-        headers={
-            "User-Agent": "followhub-arxiv-enrich/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
-            "x-api-key": api_key,
-            "Accept": "application/json",
-        },
+        headers=headers,
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
@@ -1043,9 +1100,10 @@ def enrich_entry(
             )
         )
     first_affiliation = enriched.get("first_affiliation") or (affiliations[0] if affiliations else "")
-    author_meta = enriched.get("author_meta") or []
-    if not author_meta and semantic_scholar:
-        author_meta = build_author_meta_from_semantic_scholar(semantic_scholar)
+    author_meta = normalize_author_meta(enriched.get("author_meta") or [])
+    semantic_author_meta = build_author_meta_from_semantic_scholar(semantic_scholar) if semantic_scholar else []
+    if semantic_author_meta:
+        author_meta = merge_author_meta_affiliations(author_meta, semantic_author_meta)
     if not author_meta:
         author_meta = build_author_meta(author_names, affiliations)
     author_meta = mark_corresponding_authors(

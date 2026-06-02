@@ -3,11 +3,21 @@ import sys
 import tempfile
 import unittest
 import json
+import importlib.util
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / "skill" / "rss-daily" / "run_daily.py"
+
+
+def load_module():
+    spec = importlib.util.spec_from_file_location("rss_daily_run_daily", SCRIPT_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class RssDailySkillTests(unittest.TestCase):
@@ -20,6 +30,31 @@ class RssDailySkillTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0)
         self.assertIn("rss-daily", result.stdout)
+
+    def test_has_remote_publish_config_requires_publish_and_r2_keys(self):
+        module = load_module()
+        self.assertFalse(module.has_remote_publish_config({}))
+        self.assertFalse(
+            module.has_remote_publish_config(
+                {
+                    "publish": {"remote_prefix": "follow"},
+                    "r2": {"account_id": "a", "access_key_id": "b", "secret_access_key": "", "bucket": "d"},
+                }
+            )
+        )
+        self.assertTrue(
+            module.has_remote_publish_config(
+                {
+                    "publish": {"remote_prefix": "follow"},
+                    "r2": {
+                        "account_id": "a",
+                        "access_key_id": "b",
+                        "secret_access_key": "c",
+                        "bucket": "d",
+                    },
+                }
+            )
+        )
 
     def test_daily_stops_when_prefilter_results_missing(self):
         config_text = """

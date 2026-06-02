@@ -5,6 +5,7 @@ arxiv_collect.py - Raw arXiv acquisition for daily and backfill workflows.
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from http.client import IncompleteRead
 import importlib.util
 import json
 import time
@@ -337,7 +338,7 @@ def fetch_text(url: str, timeout: int = 45) -> str:
                 time.sleep(min(60, 5 * (attempt + 1)))
                 continue
             raise
-        except (urllib.error.URLError, TimeoutError, socket.timeout):
+        except (urllib.error.URLError, TimeoutError, socket.timeout, IncompleteRead):
             if attempt < attempts - 1:
                 time.sleep(min(60, 5 * (attempt + 1)))
                 continue
@@ -794,7 +795,7 @@ def run_daily(profile: Profile, target_day: date) -> Dict[str, object]:
 
     try:
         entries = fetch_abs_metadata_by_id_list(list(source_categories.keys()), source_categories)
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout):
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, socket.timeout, IncompleteRead):
         entries = merge_list_page_entries(parsed_pages, html_by_category)
     for entry in entries:
         entry["source_categories"] = source_categories.get(entry["id"], [])

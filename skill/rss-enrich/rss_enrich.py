@@ -19,6 +19,24 @@ Usage:
 """
 
 URL_PAT = re.compile(r"https?://[^\\s)\\]>\\'\"`]+", re.IGNORECASE)
+PERSON_SPLIT_PAT = re.compile(r"[，,;；、/|]")
+ORG_HINTS = (
+    "university",
+    "institute",
+    "school",
+    "college",
+    "department",
+    "laboratory",
+    "lab",
+    "research",
+    "academy",
+    "hospital",
+    "公司",
+    "大学",
+    "学院",
+    "实验室",
+    "研究院",
+)
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -60,6 +78,61 @@ def build_summary_prompt(title: str, content_text: str, summary: str) -> str:
     )
 
 
+def build_entity_prompt(title: str, content_text: str, summary: str) -> str:
+    body = content_text.strip() or summary.strip()
+    return (
+        "Read the following RSS item content and extract entities.\n\n"
+        "Required output keys:\n"
+        "- related_organizations: a list of institution/company/lab names directly tied to the item\n"
+        "- related_companies: a list of company or industry lab names from related_organizations\n"
+        "- key_people: a list of important people directly tied to the item, such as authors, speakers, founders, or cited researchers\n\n"
+        "Rules:\n"
+        "- Do not invent facts beyond the content\n"
+        "- Only keep entities explicitly supported by the content\n"
+        "- Normalize organization names and people names when obvious\n"
+        "- Return empty lists if the content does not expose them clearly\n\n"
+        f"Title: {title}\n\n"
+        f"Content: {body}\n"
+    )
+
+
+def dedup_strings(items: Iterable[str]) -> List[str]:
+    seen = set()
+    ordered: List[str] = []
+    for item in items:
+        value = str(item or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            ordered.append(value)
+    return ordered
+
+
+def normalize_people(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return dedup_strings(value)
+    if isinstance(value, str):
+        return dedup_strings(part.strip() for part in PERSON_SPLIT_PAT.split(value) if part.strip())
+    return []
+
+
+def normalize_organizations(value: Any) -> List[str]:
+    if isinstance(value, list):
+        return dedup_strings(value)
+    if isinstance(value, str):
+        return dedup_strings(part.strip() for part in re.split(r"[;；、|\n]+", value) if part.strip())
+    return []
+
+
+def infer_organizations(text: str) -> List[str]:
+    candidates = []
+    for line in re.split(r"[\n。！？!?]", text or ""):
+        value = line.strip()
+        lowered = value.lower()
+        if value and any(hint in lowered or hint in value for hint in ORG_HINTS):
+            candidates.append(value[:120].strip(" ,;:"))
+    return dedup_strings(candidates)[:4]
+
+
 def enrich_item(item: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(item)
     title = str(enriched.get("title") or "")
@@ -68,11 +141,21 @@ def enrich_item(item: Dict[str, Any]) -> Dict[str, Any]:
     one_liner_zh = str(enriched.get("one_liner_zh") or "").strip()
     summary_cn = str(enriched.get("summary_cn") or "").strip()
     links = dedup_keep_order(list(enriched.get("links") or []) + extract_links(content_text) + extract_links(summary))
+    related_organizations = normalize_organizations(enriched.get("related_organizations"))
+    if not related_organizations:
+        related_organizations = infer_organizations(content_text or summary)
+    related_companies = normalize_organizations(enriched.get("related_companies"))
+    key_people = normalize_people(enriched.get("key_people") or enriched.get("authors"))
     enriched["links"] = links
     enriched["one_liner_zh"] = one_liner_zh
     enriched["summary_cn"] = summary_cn
+    enriched["related_organizations"] = related_organizations
+    enriched["related_companies"] = related_companies
+    enriched["key_people"] = key_people
     enriched["needs_agent_summary"] = not (one_liner_zh and summary_cn)
+    enriched["needs_related_entities"] = not (related_organizations or key_people)
     enriched["agent_summary_prompt"] = build_summary_prompt(title, content_text, summary) if enriched["needs_agent_summary"] else ""
+    enriched["agent_entity_prompt"] = build_entity_prompt(title, content_text, summary) if enriched["needs_related_entities"] else ""
     return enriched
 
 
@@ -86,10 +169,14 @@ def build_agent_completion(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "id": str(entry.get("id") or ""),
                 "title": str(entry.get("title") or ""),
                 "agent_summary_prompt": str(entry.get("agent_summary_prompt") or ""),
+                "agent_entity_prompt": str(entry.get("agent_entity_prompt") or ""),
                 "expected_output_schema": {
                     "id": str(entry.get("id") or ""),
                     "one_liner_zh": "string",
                     "summary_cn": "string",
+                    "related_organizations": ["string"],
+                    "related_companies": ["string"],
+                    "key_people": ["string"],
                 },
             }
         )

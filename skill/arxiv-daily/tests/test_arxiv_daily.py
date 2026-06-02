@@ -96,7 +96,7 @@ class ArxivDailySkillTests(unittest.TestCase):
             written = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(written["entries"][0]["summary_cn"], "中文摘要。")
 
-    def test_organization_only_agent_completion_does_not_block_publish(self):
+    def test_organization_only_agent_completion_blocks_publish(self):
         enrich_payload = {
             "agent_completion": {
                 "tasks": [
@@ -110,7 +110,9 @@ class ArxivDailySkillTests(unittest.TestCase):
                 ]
             }
         }
-        self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
+        with self.assertRaises(SystemExit) as ctx:
+            self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
+        self.assertIn("Pending tasks: 1", str(ctx.exception))
 
     def test_summary_agent_completion_still_blocks_publish(self):
         enrich_payload = {
@@ -129,6 +131,33 @@ class ArxivDailySkillTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as ctx:
             self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
         self.assertIn("Pending tasks: 1", str(ctx.exception))
+
+    def test_run_enrich_enables_external_metadata(self):
+        captured = {}
+        original_run_command = self.module.run_command
+        original_load_json = self.module.load_json
+        try:
+            def fake_run_command(args, *, cwd):
+                captured["args"] = args
+                output_index = args.index("--output") + 1
+                output_path = Path(args[output_index])
+                output_path.write_text(json.dumps({"entries": [], "agent_completion": {"required": False, "task_count": 0, "tasks": []}}), encoding="utf-8")
+                class Proc:
+                    stdout = "{}"
+                return Proc()
+
+            self.module.run_command = fake_run_command
+            self.module.load_json = lambda path: {"entries": [], "agent_completion": {"required": False, "task_count": 0, "tasks": []}}
+            with tempfile.TemporaryDirectory() as tmpdir:
+                self.module.run_enrich(
+                    Path("/tmp/followhub.yaml"),
+                    Path(tmpdir) / "input.json",
+                    Path(tmpdir) / "output.json",
+                )
+            self.assertIn("--enable-external-metadata", captured["args"])
+        finally:
+            self.module.run_command = original_run_command
+            self.module.load_json = original_load_json
 
 
 if __name__ == "__main__":

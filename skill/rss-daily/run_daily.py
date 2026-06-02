@@ -970,23 +970,58 @@ def build_digest(enrich_results_path: Path, digest_json_path: Path) -> Dict[str,
     return payload
 
 
-def publish_digest(digest_json_path: Path, publish_dir: Path, digest_date: str) -> None:
-    stage_log("publish", "start", input=str(digest_json_path), output_dir=str(publish_dir))
-    run_command(
-        [
-            sys.executable,
-            str(REPO_ROOT / "skill" / "rss-publish" / "rss_publish.py"),
-            "build-daily",
-            "--input",
-            str(digest_json_path),
-            "--output-dir",
-            str(publish_dir),
-            "--date",
-            digest_date,
-        ],
-        cwd=REPO_ROOT,
+def ensure_publish_digest_date(digest_json_path: Path, digest_date: str) -> None:
+    payload = load_json(digest_json_path)
+    if str(payload.get("date") or "").strip():
+        return
+    payload["date"] = digest_date
+    write_json(digest_json_path, payload)
+
+
+def has_remote_publish_config(config: Dict[str, Any]) -> bool:
+    publish_config = config.get("publish") or {}
+    r2_config = config.get("r2") or config.get("rclone") or {}
+    if not isinstance(publish_config, dict) or not isinstance(r2_config, dict):
+        return False
+    required_r2_keys = ("account_id", "access_key_id", "secret_access_key", "bucket")
+    return bool(publish_config.get("remote_prefix")) and all(str(r2_config.get(key) or "").strip() for key in required_r2_keys)
+
+
+def publish_digest(
+    digest_json_path: Path,
+    publish_dir: Path,
+    digest_date: str,
+    *,
+    config_path: Path,
+    remote_publish: bool,
+    allow_historical: bool,
+) -> str:
+    command = "publish-daily" if remote_publish else "build-daily"
+    stage_log(
+        "publish",
+        "start",
+        command=command,
+        input=str(digest_json_path),
+        output_dir=str(publish_dir),
     )
-    stage_log("publish", "done", output_dir=str(publish_dir))
+    ensure_publish_digest_date(digest_json_path, digest_date)
+    args = [
+        sys.executable,
+        str(REPO_ROOT / "skill" / "follow-publish" / "follow_publish.py"),
+        command,
+        "--input",
+        str(digest_json_path),
+        "--output-dir",
+        str(publish_dir),
+        "--config",
+        str(config_path),
+    ]
+    if remote_publish and allow_historical:
+        args.append("--allow-historical")
+    run_command(args, cwd=REPO_ROOT)
+    publish_mode = "remote" if remote_publish else "local"
+    stage_log("publish", "done", output_dir=str(publish_dir), mode=publish_mode)
+    return publish_mode
 
 
 def verify_publish(publish_dir: Path, verify_json_path: Path, digest_date: str) -> Dict[str, Any]:
@@ -1016,7 +1051,7 @@ def ensure_agent_completion_done(enrich_payload: Dict[str, Any], enrich_results_
     if tasks:
         fail(
             "rss-enrich reported pending agent completion tasks. "
-            f"Complete them and merge one_liner_zh/summary_cn into {enrich_results_path} before rerunning digest/publish. "
+            f"Complete them and merge one_liner_zh/summary_cn/related_organizations/related_companies/key_people into {enrich_results_path} before rerunning digest/publish. "
             f"Pending tasks: {len(tasks)}"
         )
 
@@ -1087,7 +1122,15 @@ def command_daily(args: argparse.Namespace) -> int:
         )
 
     build_digest(paths.enrich_results, paths.digest_json)
-    publish_digest(paths.digest_json, paths.publish_dir, run_date)
+    remote_publish = not args.auto_workers and has_remote_publish_config(config)
+    publish_mode = publish_digest(
+        paths.digest_json,
+        paths.publish_dir,
+        run_date,
+        config_path=config_path,
+        remote_publish=remote_publish,
+        allow_historical=bool(args.allow_historical_publish),
+    )
     verify_payload = verify_publish(paths.publish_dir, paths.verify_json, run_date)
     update_story_ledger(paths.story_ledger_json, load_json(paths.digest_json), run_date)
 
@@ -1111,6 +1154,7 @@ def command_daily(args: argparse.Namespace) -> int:
                 "enrich_results": str(paths.enrich_results),
                 "digest_json": str(paths.digest_json),
                 "publish_dir": str(paths.publish_dir),
+                "publish_mode": publish_mode,
                 "verify_json": str(paths.verify_json),
                 "verified": bool(verify_payload.get("ok", False)),
             },
@@ -1130,6 +1174,7 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
     daily.add_argument("--auto-workers", action="store_true")
     daily.add_argument("--require-agent-enrich", action="store_true")
+    daily.add_argument("--allow-historical-publish", action="store_true")
     daily.set_defaults(func=command_daily)
     return parser
 

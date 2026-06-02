@@ -67,7 +67,7 @@ python3 /home/tenstep/workspace/followhub/skill/arxiv-enrich/arxiv_enrich.py enr
    - parallelizes them with subagents when several papers are missing Chinese fields or organizations
    - merges returned `one_liner_zh`, `summary_cn`, `related_organizations`, and `related_companies` back into the enrich result
 
-`arxiv-enrich` owns this second-stage handoff contract. Higher-level orchestrators such as `arxiv-daily` should treat `arxiv-enrich` as the stage responsible for exposing these agent tasks, rather than re-deriving prompts themselves.
+`arxiv-enrich` owns this second-stage handoff contract. Higher-level orchestrators such as `arxiv-daily` should treat `arxiv-enrich` as the stage responsible for exposing these agent tasks, rather than re-deriving prompts themselves. For `arxiv-daily`, unresolved organization tasks should block publish by default, because affiliation quality materially affects Follow page readability.
 
 ## Output Handoff
 

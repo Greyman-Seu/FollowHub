@@ -237,9 +237,9 @@ favorites:
             "https://example.com should be ignored\n"
         )
         affiliations = self.module.extract_affiliations_from_text(text)
-        self.assertIn("Department of Political Sciences, Tsinghua University", affiliations)
+        self.assertIn("Tsinghua University", affiliations)
         self.assertIn("Microsoft Research Asia", affiliations)
-        self.assertIn("School of AI, Republic of Korea University", affiliations)
+        self.assertIn("Republic of Korea University", affiliations)
 
     def test_enrich_payload_preserves_daily_mode(self):
         payload = {
@@ -395,6 +395,24 @@ favorites:
         self.assertIn("https://example.ai/robot-policy", enriched["project_urls"])
         self.assertIn("https://github.com/example/robot-policy", enriched["code_urls"])
 
+    def test_enrich_entry_fetches_pdf_text_for_affiliation_when_missing(self):
+        original_fetch_pdf_head_text = self.module.fetch_pdf_head_text
+        try:
+            self.module.fetch_pdf_head_text = lambda _pdf_url: "1 Stanford University\n2 Google DeepMind"
+            entry = {
+                "id": "2604.13132",
+                "title": "PDF Affiliation Example",
+                "summary": "A robotics paper.",
+                "pdf_url": "https://arxiv.org/pdf/2604.13132.pdf",
+            }
+            enriched = self.module.enrich_entry(entry, enable_external_metadata=True)
+        finally:
+            self.module.fetch_pdf_head_text = original_fetch_pdf_head_text
+
+        self.assertEqual(enriched["first_affiliation"], "Stanford University")
+        self.assertIn("Stanford University", enriched["related_organizations"])
+        self.assertIn("Google DeepMind", enriched["related_organizations"])
+
     def test_enrich_entry_fetches_semantic_scholar_when_enabled(self):
         original_fetch = self.module.fetch_semantic_scholar_metadata
         try:
@@ -498,7 +516,7 @@ favorites:
         self.assertFalse(marked[0]["is_corresponding_author"])
         self.assertTrue(marked[1]["is_corresponding_author"])
 
-    def test_enrich_entry_skips_external_fetch_without_api_key(self):
+    def test_enrich_entry_allows_external_fetch_without_api_key(self):
         original_fetch = self.module.fetch_semantic_scholar_metadata
         calls = []
         try:
@@ -519,7 +537,8 @@ favorites:
         finally:
             self.module.fetch_semantic_scholar_metadata = original_fetch
 
-        self.assertEqual(calls, [])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["api_key"], "")
         self.assertEqual(enriched["abstract_en"], "A local-only paper.")
 
     def test_cli_enriches_json_file(self):

@@ -96,7 +96,7 @@ class ArxivDailySkillTests(unittest.TestCase):
             written = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(written["entries"][0]["summary_cn"], "中文摘要。")
 
-    def test_organization_only_agent_completion_blocks_publish(self):
+    def test_organization_only_agent_completion_does_not_block_publish(self):
         enrich_payload = {
             "agent_completion": {
                 "tasks": [
@@ -110,9 +110,7 @@ class ArxivDailySkillTests(unittest.TestCase):
                 ]
             }
         }
-        with self.assertRaises(SystemExit) as ctx:
-            self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
-        self.assertIn("Pending tasks: 1", str(ctx.exception))
+        self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
 
     def test_summary_agent_completion_still_blocks_publish(self):
         enrich_payload = {

@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import re
+import tempfile
 import sys
 import urllib.parse
 import urllib.request
@@ -75,6 +76,17 @@ AFFILIATION_HINTS = (
     "cmu",
     "nvidia",
 )
+INSTITUTION_KEYWORDS = (
+    "university",
+    "institute",
+    "laboratory",
+    "lab",
+    "academy",
+    "college",
+    "hospital",
+    "research",
+    "labs",
+)
 ORGANIZATION_HINTS = AFFILIATION_HINTS + (
     "physical intelligence",
     "openai",
@@ -121,6 +133,29 @@ COMPANY_HINTS = (
     "toyota",
     "waymo",
     "figure ai",
+)
+AFFILIATION_HEADER_STOP_PATTERNS = (
+    r"^\s*abstract\b",
+    r"^\s*keywords?\b",
+    r"^\s*\d+\s+introduction\b",
+    r"^\s*introduction\b",
+    r"^\s*figure\s+\d+",
+    r"^\s*table\s+\d+",
+    r"^\s*arxiv:\d{4}\.\d{4,5}",
+)
+COUNTRY_SUFFIXES = (
+    "united states",
+    "china",
+    "spain",
+    "norway",
+    "germany",
+    "france",
+    "canada",
+    "singapore",
+    "japan",
+    "korea",
+    "uk",
+    "united kingdom",
 )
 ORG_SPLIT_PATTERN = re.compile(r"[;；、\n|]+")
 ORG_UNIT_PREFIXES = (
@@ -282,6 +317,17 @@ def _coerce_author_names(value: Any) -> List[str]:
     return []
 
 
+def _contains_hint(text: str, hints: Iterable[str]) -> bool:
+    value = str(text or "")
+    for hint in hints:
+        token = str(hint or "").strip()
+        if not token:
+            continue
+        if re.search(rf"(?<![A-Za-z0-9]){re.escape(token)}(?![A-Za-z0-9])", value, re.IGNORECASE):
+            return True
+    return False
+
+
 def split_organization_labels(values: Any) -> List[str]:
     if isinstance(values, str):
         raw_values = [values]
@@ -302,13 +348,30 @@ def split_organization_labels(values: Any) -> List[str]:
 
 
 def _looks_like_organization(value: str) -> bool:
-    lowered = value.lower()
-    return any(token in lowered for token in ORGANIZATION_HINTS)
+    return _contains_hint(value, ORGANIZATION_HINTS)
 
 
 def _looks_like_unit_prefix(value: str) -> bool:
     lowered = value.lower().strip()
     return any(lowered.startswith(prefix) for prefix in ORG_UNIT_PREFIXES)
+
+
+def _has_institution_keyword(value: str) -> bool:
+    return _contains_hint(value, INSTITUTION_KEYWORDS)
+
+
+def _extract_institution_phrase(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = re.split(r"[†‡*∗§]|(?:\b[Pp]art of\b)", text, maxsplit=1)[0].strip(" ,;:")
+    pattern = re.compile(
+        r"([A-Z][A-Za-z&().'/-]*(?:\s+[A-Z][A-Za-z&().'/-]*){0,5}\s+"
+        r"(?:University|Institute|Laboratory|Lab|Labs|Academy|College|Hospital|Research)"
+        r"(?:\s+(?:of|and|the|for|in|on|at|[A-Z][A-Za-z&().'/-]*)){0,6})",
+    )
+    matches = [match.group(1).strip(" ,;:") for match in pattern.finditer(text)]
+    return matches[-1] if matches else text
 
 
 def _canonical_organization_name(value: str) -> str:
@@ -323,14 +386,35 @@ def _normalize_organization_name(value: str) -> str:
     text = re.sub(r"\s+", " ", text).strip(" ,;:")
     if not text:
         return ""
+    text = _extract_institution_phrase(text)
     parts = [part.strip(" ,;:") for part in re.split(r"\s*,\s*", text) if part.strip(" ,;:")]
+    if len(parts) > 1:
+        tail = [part for part in parts if _looks_like_organization(part)]
+        if tail:
+            parts = tail
     organization_parts = [part for part in parts if _looks_like_organization(part)]
     for part in reversed(organization_parts):
         if not _looks_like_unit_prefix(part):
-            return _canonical_organization_name(part)
+            candidate = _canonical_organization_name(part)
+            for suffix in COUNTRY_SUFFIXES:
+                if candidate.lower().endswith(f" {suffix}"):
+                    candidate = candidate[: -(len(suffix) + 1)].strip(" ,;:")
+            return candidate
     if organization_parts:
-        return _canonical_organization_name(organization_parts[-1])
-    return _canonical_organization_name(text) if _looks_like_organization(text) else ""
+        candidate = _canonical_organization_name(organization_parts[-1])
+        for suffix in COUNTRY_SUFFIXES:
+            if candidate.lower().endswith(f" {suffix}"):
+                candidate = candidate[: -(len(suffix) + 1)].strip(" ,;:")
+        if _looks_like_unit_prefix(candidate) and not _has_institution_keyword(candidate.replace(candidate.split()[0], "", 1)):
+            return ""
+        return candidate
+    candidate = _canonical_organization_name(text) if _looks_like_organization(text) else ""
+    if _looks_like_unit_prefix(candidate) and not _has_institution_keyword(candidate.replace(candidate.split()[0], "", 1)):
+        return ""
+    for suffix in COUNTRY_SUFFIXES:
+        if candidate.lower().endswith(f" {suffix}"):
+            candidate = candidate[: -(len(suffix) + 1)].strip(" ,;:")
+    return candidate
 
 
 def derive_related_organizations(
@@ -353,8 +437,7 @@ def derive_related_organizations(
 def derive_related_companies(organizations: List[str], existing: Any = None) -> List[str]:
     values = split_organization_labels(existing)
     for organization in organizations:
-        lowered = organization.lower()
-        if any(token in lowered for token in COMPANY_HINTS):
+        if _contains_hint(organization, COMPANY_HINTS):
             values.append(organization)
     return _dedup_keep_order(values)
 
@@ -502,20 +585,47 @@ def extract_affiliations_from_text(text: str) -> List[str]:
         line = line.strip()
         if not line:
             continue
-        raw_lines.extend(part.strip() for part in re.split(r"(?=\b\d+\s+[A-Z])", line) if part.strip())
+        split_parts = [part.strip() for part in re.split(r"(?=(?:^|\s)\d+\s+[A-Z])", line) if part.strip()]
+        raw_lines.extend(split_parts if split_parts else [line])
+    header_lines: List[str] = []
+    for line in raw_lines[:120]:
+        lowered = line.lower()
+        if any(re.match(pattern, lowered) for pattern in AFFILIATION_HEADER_STOP_PATTERNS):
+            break
+        header_lines.append(line)
     candidates: List[str] = []
-    for raw_line in raw_lines:
+    for raw_line in header_lines:
         line = raw_line.strip()
         if not line:
             continue
         line = re.sub(r"^[\d\W_]+", "", line).strip()
         if not line:
             continue
+        line = re.sub(r"\b[\w.+-]+@[\w.-]+\b", "", line).strip(" ,;:")
+        if not line:
+            continue
+        if len(line) > 160 or len(line.split()) > 18:
+            continue
         if re.search(r"\b[a-zA-Z]{18,}\b", line):
             continue
         lowered = line.lower()
-        if any(token in lowered for token in AFFILIATION_HINTS):
-            candidates.append(line)
+        if _contains_hint(line, AFFILIATION_HINTS):
+            fragments = re.split(r"[;；|]", line)
+            if len(fragments) == 1:
+                fragments = [line]
+            for fragment in fragments:
+                fragment = fragment.strip(" ,;:")
+                if not fragment:
+                    continue
+                if len(fragment.split()) > 18:
+                    continue
+                if not _contains_hint(fragment, AFFILIATION_HINTS):
+                    continue
+                if re.search(r"\b[a-zA-Z]{18,}\b", fragment):
+                    continue
+                candidate = _normalize_organization_name(fragment)
+                if candidate:
+                    candidates.append(candidate)
     return _dedup_keep_order(candidates)
 
 
@@ -950,6 +1060,60 @@ def fetch_text(url: str, timeout: int = 45) -> str:
         return response.read().decode("utf-8", errors="ignore")
 
 
+def extract_pdf_text(path: Path) -> str:
+    try:
+        import fitz  # type: ignore
+
+        doc = fitz.open(path)
+        pages = [doc.load_page(index).get_text("text") for index in range(min(len(doc), 3))]
+        return "\n".join(page for page in pages if page).strip()
+    except Exception:
+        pass
+
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["pdftotext", str(path), "-"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+
+    return ""
+
+
+def fetch_pdf_head_text(pdf_url: str, timeout: int = 45) -> str:
+    url = str(pdf_url or "").strip()
+    if not url:
+        return ""
+    try:
+        with tempfile.NamedTemporaryFile(prefix="followhub-arxiv-enrich-", suffix=".pdf", delete=False) as tmp:
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "followhub-arxiv-enrich/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
+                    "Accept": "application/pdf,*/*;q=0.8",
+                },
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                tmp.write(response.read())
+            tmp_path = Path(tmp.name)
+        try:
+            return extract_pdf_text(tmp_path)
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    except Exception:
+        return ""
+
+
 def fetch_semantic_scholar_metadata(
     *,
     title: str,
@@ -1068,7 +1232,7 @@ def enrich_entry(
     semantic_scholar = dict(enriched.get("semantic_scholar") or {})
     normalized_profile = normalize_scoring_profile(scoring_profile) if scoring_profile else None
     api_key = resolve_semantic_scholar_api_key(semantic_scholar_api_key)
-    if enable_external_metadata and not semantic_scholar and api_key and enriched.get("title"):
+    if enable_external_metadata and not semantic_scholar and enriched.get("title"):
         try:
             semantic_scholar = fetch_semantic_scholar_metadata(
                 title=str(enriched.get("title") or ""),
@@ -1089,6 +1253,10 @@ def enrich_entry(
     affiliations = _coerce_affiliations(enriched.get("affiliations"))
     if not affiliations and semantic_scholar:
         affiliations = extract_affiliations_from_semantic_scholar(semantic_scholar)
+    if enable_external_metadata and not affiliations and not str(enriched.get("pdf_head_text") or "").strip():
+        pdf_head_text = fetch_pdf_head_text(str(enriched.get("pdf_url") or ""))
+        if pdf_head_text:
+            enriched["pdf_head_text"] = pdf_head_text
     if not affiliations:
         affiliations = extract_affiliations_from_text(
             "\n".join(
@@ -1099,7 +1267,7 @@ def enrich_entry(
                 ]
             )
         )
-    first_affiliation = enriched.get("first_affiliation") or (affiliations[0] if affiliations else "")
+    first_affiliation = str(enriched.get("first_affiliation") or "").strip()
     author_meta = normalize_author_meta(enriched.get("author_meta") or [])
     semantic_author_meta = build_author_meta_from_semantic_scholar(semantic_scholar) if semantic_scholar else []
     if semantic_author_meta:
@@ -1134,6 +1302,8 @@ def enrich_entry(
         affiliations=affiliations,
         author_meta=author_meta,
     )
+    if not first_affiliation:
+        first_affiliation = related_organizations[0] if related_organizations else (affiliations[0] if affiliations else "")
     related_companies = derive_related_companies(related_organizations, enriched.get("related_companies"))
 
     citation_count = int(

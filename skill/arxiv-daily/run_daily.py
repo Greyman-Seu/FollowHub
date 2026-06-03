@@ -515,7 +515,6 @@ def ensure_enrich_agent_completion_done(enrich_payload: Dict[str, object], enric
         if bool(task.get("needs_agent_summary", False))
         or bool(task.get("needs_summary_cn_translation", False))
         or bool(task.get("needs_one_liner_zh", False))
-        or bool(task.get("needs_related_organizations", False))
     ]
     if tasks:
         fail(

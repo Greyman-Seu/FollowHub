@@ -13,6 +13,8 @@ build/
 .vscode/
 .codex
 .context/
+.agents/
+.pnpm-store/
 ref/**/.git/
 ref/**/venv/
 ref/**/__pycache__/
@@ -21,3 +23,9 @@ ref/**/*.zip
 storage/*
 !storage/.gitkeep
 skill/arxiv-fig/keyword_suggestions.jsonl
+env.sh
+arxiv_figures_*.json
+arxiv-collect-output/
+arxiv-daily-output/
+rss-collect-output/
+rss-daily-output/

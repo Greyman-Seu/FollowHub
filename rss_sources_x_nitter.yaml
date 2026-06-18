@@ -1,0 +1,694 @@
+sources:
+- name: x-sama
+  type: x
+  feed_url: https://nitter.net/sama/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ylecun
+  type: x
+  feed_url: https://nitter.net/ylecun/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-AndrewYNg
+  type: x
+  feed_url: https://nitter.net/AndrewYNg/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-fchollet
+  type: x
+  feed_url: https://nitter.net/fchollet/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-_KarenHao
+  type: x
+  feed_url: https://nitter.net/_KarenHao/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-karpathy
+  type: x
+  feed_url: https://nitter.net/karpathy/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-SchmidhuberAI
+  type: x
+  feed_url: https://nitter.net/SchmidhuberAI/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-sarahookr
+  type: x
+  feed_url: https://nitter.net/sarahookr/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-demishassabis
+  type: x
+  feed_url: https://nitter.net/demishassabis/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-saranormous
+  type: x
+  feed_url: https://nitter.net/saranormous/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-hardmaru
+  type: x
+  feed_url: https://nitter.net/hardmaru/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-lilianweng
+  type: x
+  feed_url: https://nitter.net/lilianweng/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-OriolVinyalsML
+  type: x
+  feed_url: https://nitter.net/OriolVinyalsML/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Michael_J_Black
+  type: x
+  feed_url: https://nitter.net/Michael_J_Black/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-JeffDean
+  type: x
+  feed_url: https://nitter.net/JeffDean/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-goodfellow_ian
+  type: x
+  feed_url: https://nitter.net/goodfellow_ian/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-achowdhery
+  type: x
+  feed_url: https://nitter.net/achowdhery/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-PeterDiamandis
+  type: x
+  feed_url: https://nitter.net/PeterDiamandis/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-GaryMarcus
+  type: x
+  feed_url: https://nitter.net/GaryMarcus/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-giffmana
+  type: x
+  feed_url: https://nitter.net/giffmana/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-rasbt
+  type: x
+  feed_url: https://nitter.net/rasbt/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-KateKayeReports
+  type: x
+  feed_url: https://nitter.net/KateKayeReports/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-EMostaque
+  type: x
+  feed_url: https://nitter.net/EMostaque/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-drfeifei
+  type: x
+  feed_url: https://nitter.net/drfeifei/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-DrJimFan
+  type: x
+  feed_url: https://nitter.net/DrJimFan/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-omarsar0
+  type: x
+  feed_url: https://nitter.net/omarsar0/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-hugo_larochelle
+  type: x
+  feed_url: https://nitter.net/hugo_larochelle/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-benjedwards
+  type: x
+  feed_url: https://nitter.net/benjedwards/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-rebecca_szkutak
+  type: x
+  feed_url: https://nitter.net/rebecca_szkutak/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-svlevine
+  type: x
+  feed_url: https://nitter.net/svlevine/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ericschmidt
+  type: x
+  feed_url: https://nitter.net/ericschmidt/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ilyasut
+  type: x
+  feed_url: https://nitter.net/ilyasut/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-patrickmineault
+  type: x
+  feed_url: https://nitter.net/patrickmineault/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-natashajaques
+  type: x
+  feed_url: https://nitter.net/natashajaques/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-pabbeel
+  type: x
+  feed_url: https://nitter.net/pabbeel/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ESYudkowsky
+  type: x
+  feed_url: https://nitter.net/ESYudkowsky/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-geoffreyhinton
+  type: x
+  feed_url: https://nitter.net/geoffreyhinton/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-wintonARK
+  type: x
+  feed_url: https://nitter.net/wintonARK/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-jeffclune
+  type: x
+  feed_url: https://nitter.net/jeffclune/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-RamaswmySridhar
+  type: x
+  feed_url: https://nitter.net/RamaswmySridhar/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-bentossell
+  type: x
+  feed_url: https://nitter.net/bentossell/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-johnschulman2
+  type: x
+  feed_url: https://nitter.net/johnschulman2/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-_akhaliq
+  type: x
+  feed_url: https://nitter.net/_akhaliq/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-quocleix
+  type: x
+  feed_url: https://nitter.net/quocleix/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-jackclarkSF
+  type: x
+  feed_url: https://nitter.net/jackclarkSF/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-mervenoyann
+  type: x
+  feed_url: https://nitter.net/mervenoyann/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-DavidSHolz
+  type: x
+  feed_url: https://nitter.net/DavidSHolz/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-natolambert
+  type: x
+  feed_url: https://nitter.net/natolambert/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-RichardSocher
+  type: x
+  feed_url: https://nitter.net/RichardSocher/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ZoubinGhahrama1
+  type: x
+  feed_url: https://nitter.net/ZoubinGhahrama1/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-nathanbenaich
+  type: x
+  feed_url: https://nitter.net/nathanbenaich/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-johnvmcdonnell
+  type: x
+  feed_url: https://nitter.net/johnvmcdonnell/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-tunguz
+  type: x
+  feed_url: https://nitter.net/tunguz/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-bengoertzel
+  type: x
+  feed_url: https://nitter.net/bengoertzel/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ch402
+  type: x
+  feed_url: https://nitter.net/ch402/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Kseniase_
+  type: x
+  feed_url: https://nitter.net/Kseniase_/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-paulg
+  type: x
+  feed_url: https://nitter.net/paulg/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-rsalakhu
+  type: x
+  feed_url: https://nitter.net/rsalakhu/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-gdb
+  type: x
+  feed_url: https://nitter.net/gdb/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-vivnat
+  type: x
+  feed_url: https://nitter.net/vivnat/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-AnimaAnandkumar
+  type: x
+  feed_url: https://nitter.net/AnimaAnandkumar/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-JeffreyTowson
+  type: x
+  feed_url: https://nitter.net/JeffreyTowson/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Thom_Wolf
+  type: x
+  feed_url: https://nitter.net/Thom_Wolf/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-SamanyouGarg
+  type: x
+  feed_url: https://nitter.net/SamanyouGarg/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-KirkDBorne
+  type: x
+  feed_url: https://nitter.net/KirkDBorne/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Alber_RomGar
+  type: x
+  feed_url: https://nitter.net/Alber_RomGar/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-SilverJacket
+  type: x
+  feed_url: https://nitter.net/SilverJacket/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ecsquendor
+  type: x
+  feed_url: https://nitter.net/ecsquendor/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-jordnb
+  type: x
+  feed_url: https://nitter.net/jordnb/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-NPCollapse
+  type: x
+  feed_url: https://nitter.net/NPCollapse/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-NaveenGRao
+  type: x
+  feed_url: https://nitter.net/NaveenGRao/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-azeem
+  type: x
+  feed_url: https://nitter.net/azeem/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Suhail
+  type: x
+  feed_url: https://nitter.net/Suhail/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-maxjaderberg
+  type: x
+  feed_url: https://nitter.net/maxjaderberg/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-Kyle_L_Wiggers
+  type: x
+  feed_url: https://nitter.net/Kyle_L_Wiggers/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-cocoweixu
+  type: x
+  feed_url: https://nitter.net/cocoweixu/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-alexandr_wang
+  type: x
+  feed_url: https://nitter.net/alexandr_wang/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-CaimingXiong
+  type: x
+  feed_url: https://nitter.net/CaimingXiong/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-YiMaTweets
+  type: x
+  feed_url: https://nitter.net/YiMaTweets/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-notmisha
+  type: x
+  feed_url: https://nitter.net/notmisha/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-peteratmsr
+  type: x
+  feed_url: https://nitter.net/peteratmsr/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-shivon
+  type: x
+  feed_url: https://nitter.net/shivon/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-jackyliang42
+  type: x
+  feed_url: https://nitter.net/jackyliang42/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-v_vashishta
+  type: x
+  feed_url: https://nitter.net/v_vashishta/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-xdh
+  type: x
+  feed_url: https://nitter.net/xdh/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ravi_lsvp
+  type: x
+  feed_url: https://nitter.net/ravi_lsvp/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ClementDelangue
+  type: x
+  feed_url: https://nitter.net/ClementDelangue/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-oh_that_hat
+  type: x
+  feed_url: https://nitter.net/oh_that_hat/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-sapna
+  type: x
+  feed_url: https://nitter.net/sapna/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-VRLalchand
+  type: x
+  feed_url: https://nitter.net/VRLalchand/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-svpino
+  type: x
+  feed_url: https://nitter.net/svpino/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ceobillionaire
+  type: x
+  feed_url: https://nitter.net/ceobillionaire/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-ykilcher
+  type: x
+  feed_url: https://nitter.net/ykilcher/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-BornsteinMatt
+  type: x
+  feed_url: https://nitter.net/BornsteinMatt/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-lachygroom
+  type: x
+  feed_url: https://nitter.net/lachygroom/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-goodside
+  type: x
+  feed_url: https://nitter.net/goodside/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-amasad
+  type: x
+  feed_url: https://nitter.net/amasad/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-polynoamial
+  type: x
+  feed_url: https://nitter.net/polynoamial/rss
+  tags:
+  - x
+  - ai
+  - people
+- name: x-sytelus
+  type: x
+  feed_url: https://nitter.net/sytelus/rss
+  tags:
+  - x
+  - ai
+  - people

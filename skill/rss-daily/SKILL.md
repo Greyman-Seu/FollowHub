@@ -13,6 +13,10 @@ Pipeline-level skill for RSS daily follow-up.
 python3 skill/rss-daily/run_daily.py daily --config followhub.yaml
 ```
 
+If the feed set includes Nitter / X / XCancel style sources, try direct
+terminal access first before adding proxy settings. See `rss-collect` for
+the fallback proxy rules and config shape.
+
 ## Execution Contract
 
 For a normal daily run, the agent must execute these stages in order:

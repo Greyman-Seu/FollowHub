@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import html
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -145,6 +146,19 @@ def rss_focus(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def rss_collect_runtime(config: Dict[str, Any]) -> Dict[str, int]:
+    rss = config.get("rss") or {}
+    collect = rss.get("collect") if isinstance(rss, dict) else {}
+    if not isinstance(collect, dict):
+        collect = {}
+    max_workers = int(collect.get("max_workers") or 8)
+    request_timeout_seconds = int(collect.get("request_timeout_seconds") or 30)
+    return {
+        "max_workers": max(1, max_workers),
+        "request_timeout_seconds": max(1, request_timeout_seconds),
+    }
+
+
 AD_HINTS = {
     "广告",
     "赞助",
@@ -220,9 +234,144 @@ DOMAIN_HINTS = {
     },
 }
 
+TECH_SIGNAL_HINTS = {
+    "paper",
+    "arxiv",
+    "dataset",
+    "benchmark",
+    "model",
+    "weights",
+    "release",
+    "launch",
+    "open source",
+    "open-source",
+    "github",
+    "policy",
+    "robot",
+    "robotics",
+    "vla",
+    "world model",
+    "diffusion",
+    "multimodal",
+    "vlm",
+    "llm",
+    "reasoning",
+    "tool calling",
+    "agent",
+    "mocap",
+    "vision",
+    "video generation",
+    "image generation",
+    "evaluation",
+    "training",
+    "inference",
+    "openai",
+    "claude",
+    "gemini",
+    "deepmind",
+    "anthropic",
+    "transformer",
+    "post-training",
+    "post training",
+    "rl",
+    "reinforcement learning",
+    "gpu",
+    "token",
+    "compute",
+    "code agent",
+    "vision-language-action",
+    "机器人",
+    "具身",
+    "多模态",
+    "大模型",
+    "推理",
+    "开源",
+    "算力",
+    "强化学习",
+    "后训练",
+    "世界模型",
+    "视频生成",
+    "图像生成",
+    "模型",
+    "论文",
+    "顶会",
+    "顶刊",
+    "思维链",
+    "奖励",
+    "ai工厂",
+}
+
+X_PROMO_HINTS = {
+    "amzn.to",
+    "what you will learn",
+    "academy.",
+    "sign up",
+    "register",
+    "prelaunch",
+    "buy now",
+    "available now",
+    "order now",
+    "course",
+    "bootcamp",
+    "sponsor",
+    "sponsored",
+    "promotion",
+    "英雄帖",
+    "报名",
+    "招聘",
+    "训练营",
+    "课程",
+    "活动",
+    "闭门交流",
+}
+
+FOLLOWUP_HINTS = {
+    "recap",
+    "update",
+    "followup",
+    "follow-up",
+    "details",
+    "breakdown",
+    "analysis",
+    "deep dive",
+    "new paper",
+    "new model",
+    "发布",
+    "更新",
+    "进展",
+    "复盘",
+    "解读",
+    "详解",
+    "新作",
+    "新模型",
+}
+
+SUMMARY_HTML_TAG_PAT = re.compile(r"<[^>]+>")
+RT_PREFIX_PAT = re.compile(r"^RT by @[^:]+:\\s*", re.IGNORECASE)
+URL_INLINE_PAT = re.compile(r"https?://\\S+", re.IGNORECASE)
+
 
 def normalize_text(value: str) -> str:
     return " ".join(str(value or "").lower().split())
+
+
+def strip_summary_markup(value: str) -> str:
+    text = SUMMARY_HTML_TAG_PAT.sub(" ", str(value or ""))
+    text = html.unescape(text)
+    text = URL_INLINE_PAT.sub("", text)
+    return " ".join(text.split()).strip()
+
+
+def truncate_text(value: str, limit: int) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def contains_cjk(value: str) -> bool:
+    text = str(value or "")
+    return any("\u4e00" <= char <= "\u9fff" for char in text)
 
 
 def combined_entry_text(entry: Dict[str, Any]) -> str:
@@ -238,6 +387,16 @@ def combined_entry_text(entry: Dict[str, Any]) -> str:
     )
 
 
+def cleaned_entry_body(entry: Dict[str, Any]) -> str:
+    parts = [
+        strip_summary_markup(str(entry.get("title") or "")),
+        strip_summary_markup(str(entry.get("summary") or "")),
+        strip_summary_markup(str(entry.get("content_text") or "")),
+        " ".join(str(tag) for tag in (entry.get("tags") or [])),
+    ]
+    return " ".join(part for part in parts if part).strip()
+
+
 def token_match_count(text: str, tokens: List[str]) -> int:
     count = 0
     for token in tokens:
@@ -251,6 +410,38 @@ def looks_like_ad(text: str, exclude_keywords: List[str]) -> bool:
     if token_match_count(text, exclude_keywords) > 0:
         return True
     return any(hint in text for hint in AD_HINTS)
+
+
+def has_technical_signal(text: str) -> bool:
+    lowered = normalize_text(text)
+    return any(hint in lowered for hint in TECH_SIGNAL_HINTS)
+
+
+def looks_like_x_promo_or_noise(entry: Dict[str, Any], text: str) -> bool:
+    if str(entry.get("source_type") or "").strip().lower() != "x":
+        return False
+    lowered = normalize_text(text)
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    title_lower = title.lower()
+    if any(hint in lowered for hint in X_PROMO_HINTS):
+        return True
+    if title_lower in {"image", "video"}:
+        return True
+    if title_lower.startswith("rt by @") and not has_technical_signal(text):
+        return True
+    if len(title.split()) <= 4 and not has_technical_signal(text):
+        return True
+    return False
+
+
+def should_keep_recent_repeat(entry: Dict[str, Any], text: str) -> bool:
+    story_status = str(entry.get("story_status") or "").strip().lower()
+    history_hint = entry.get("history_hint") or {}
+    history_source_overlap = bool(history_hint.get("history_source_overlap")) if isinstance(history_hint, dict) else False
+    lowered = normalize_text(text)
+    if story_status == "followup" and not history_source_overlap and any(hint in lowered for hint in FOLLOWUP_HINTS):
+        return True
+    return False
 
 
 def collect_daily(config_path: Path, raw_json_path: Path) -> Dict[str, Any]:
@@ -305,8 +496,21 @@ def normalize_daily(raw_json_path: Path, normalized_json_path: Path) -> Dict[str
     return payload
 
 
-def fetch_daily(normalized_json_path: Path, fetched_json_path: Path) -> Dict[str, Any]:
-    stage_log("fetch", "start", input=str(normalized_json_path), output=str(fetched_json_path))
+def fetch_daily(
+    normalized_json_path: Path,
+    fetched_json_path: Path,
+    *,
+    max_workers: int,
+    request_timeout_seconds: int,
+) -> Dict[str, Any]:
+    stage_log(
+        "fetch",
+        "start",
+        input=str(normalized_json_path),
+        output=str(fetched_json_path),
+        max_workers=max_workers,
+        request_timeout_seconds=request_timeout_seconds,
+    )
     run_command(
         [
             sys.executable,
@@ -316,11 +520,21 @@ def fetch_daily(normalized_json_path: Path, fetched_json_path: Path) -> Dict[str
             str(normalized_json_path),
             "--output",
             str(fetched_json_path),
+            "--max-workers",
+            str(max_workers),
+            "--request-timeout-seconds",
+            str(request_timeout_seconds),
         ],
         cwd=REPO_ROOT,
     )
     payload = load_json(fetched_json_path)
-    stage_log("fetch", "done", item_count=int(payload.get("item_count", 0) or 0), fetched_json=str(fetched_json_path))
+    stage_log(
+        "fetch",
+        "done",
+        item_count=int(payload.get("item_count", 0) or 0),
+        fetched_json=str(fetched_json_path),
+        max_workers=int(payload.get("max_workers", max_workers) or max_workers),
+    )
     return payload
 
 
@@ -799,19 +1013,27 @@ def auto_prefilter(clustered_payload: Dict[str, Any], focus: Dict[str, Any], out
     for entry in clustered_payload.get("items", []) or []:
         title = str(entry.get("title") or "").strip()
         text = combined_entry_text(entry)
+        clean_text = cleaned_entry_body(entry)
         decision = "drop"
         reason = "No title or content signal."
         if looks_like_ad(text, exclude_keywords):
             decision = "drop"
             reason = "Dropped by auto-prefilter because ad/promo keywords were detected."
+        elif looks_like_x_promo_or_noise(entry, clean_text):
+            decision = "drop"
+            reason = "Dropped by auto-prefilter because the X/Twitter item looks promotional or low-signal."
         elif not title:
             decision = "drop"
             reason = "Dropped by auto-prefilter because title is empty."
         elif keywords:
             matches = token_match_count(text, keywords)
-            if matches > 0:
+            if matches > 0 or has_technical_signal(clean_text):
                 decision = "keep"
-                reason = f"Kept by auto-prefilter because {matches} focus keywords matched."
+                reason = (
+                    f"Kept by auto-prefilter because {matches} focus keywords matched."
+                    if matches > 0
+                    else "Kept by auto-prefilter because technical signal was detected."
+                )
             else:
                 decision = "uncertain"
                 reason = "Marked uncertain by auto-prefilter because no focus keywords matched."
@@ -823,7 +1045,6 @@ def auto_prefilter(clustered_payload: Dict[str, Any], focus: Dict[str, Any], out
     write_json(output_path, payload)
     stage_log("prefilter", "auto-generated", results_path=str(output_path), item_count=len(items))
     return payload
-
 
 def infer_domains(entry: Dict[str, Any]) -> List[Dict[str, str]]:
     merged = combined_entry_text(entry)
@@ -838,6 +1059,16 @@ def infer_domains(entry: Dict[str, Any]) -> List[Dict[str, str]]:
                 result.append({"slug": "llm-vlm", "name": "LLM/VLM"})
             elif slug == "aigc":
                 result.append({"slug": "aigc", "name": "AIGC"})
+    if not result:
+        lowered = normalize_text(merged)
+        if any(token in lowered for token in {"大模型", "多模态", "推理", "transformer", "claude", "openai", "gemini", "token", "算力", "后训练", "模型"}):
+            result.append({"slug": "llm-vlm", "name": "LLM/VLM"})
+        if any(token in lowered for token in {"机器人", "具身", "机械臂", "robot", "robotics", "manipulation", "无人机", "vla", "world model"}):
+            result.append({"slug": "physical-embodied-intelligence", "name": "Physical/Embodied Intelligence"})
+        if any(token in lowered for token in {"视频生成", "图像生成", "扩散", "diffusion", "video generation", "image generation"}):
+            result.append({"slug": "aigc", "name": "AIGC"})
+        if any(token in lowered for token in {"智能体", "agent", "workflow", "tool use", "claude code", "code agent"}):
+            result.append({"slug": "agent", "name": "Agent"})
     if result:
         deduped = []
         seen = set()
@@ -868,6 +1099,7 @@ def auto_filter(
         summary = str(entry.get("summary") or "").strip()
         title = str(entry.get("title") or "").strip()
         text = combined_entry_text(entry)
+        clean_text = cleaned_entry_body(entry)
         focus_matches = token_match_count(text, keywords)
         include = bool(title)
         reason = "Automatic fallback included titled entry for RSS pipeline testing." if include else "Automatic fallback dropped empty title entry."
@@ -876,18 +1108,25 @@ def auto_filter(
         if looks_like_ad(text, exclude_keywords):
             include = False
             reason = "Dropped by auto-filter because ad/promo keywords were detected."
+        elif looks_like_x_promo_or_noise(entry, clean_text):
+            include = False
+            reason = "Dropped by auto-filter because the X/Twitter item looks promotional or low-signal."
         elif story_id and story_id in seen_story_ids:
-            if story_status == "followup":
+            if should_keep_recent_repeat(entry, clean_text):
                 include = True
-                reason = "Included by auto-filter because this story revisits recent digest history with followup status."
+                reason = "Included by auto-filter because this item revisits recent history but still carries strong technical signal."
             else:
                 include = False
                 reason = "Dropped by auto-filter because this story_id already appeared in recent digest history and is not marked as followup."
-        elif keywords and focus_matches <= 0:
+        elif keywords and focus_matches <= 0 and not has_technical_signal(clean_text):
             include = False
             reason = "Dropped by auto-filter because no focus keywords matched."
-        elif keywords and focus_matches > 0:
-            reason = f"Included by auto-filter because {focus_matches} focus keywords matched."
+        elif keywords and (focus_matches > 0 or has_technical_signal(clean_text)):
+            reason = (
+                f"Included by auto-filter because {focus_matches} focus keywords matched."
+                if focus_matches > 0
+                else "Included by auto-filter because technical signal was detected."
+            )
         items.append(
             {
                 "id": str(entry.get("id") or ""),
@@ -918,6 +1157,69 @@ def auto_filter(
     }
     write_json(output_path, payload)
     stage_log("filter", "auto-generated", results_path=str(output_path), item_count=len(items))
+    return payload
+
+
+def _auto_one_liner_zh(entry: Dict[str, Any]) -> str:
+    existing = str(entry.get("one_liner_zh") or "").strip()
+    if existing:
+        return existing
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    title = RT_PREFIX_PAT.sub("", title)
+    title = " ".join(title.split()).strip()
+    if not title:
+        return ""
+    source_type = str(entry.get("source_type") or "rss").strip().lower()
+    if contains_cjk(title):
+        return truncate_text(title, 60)
+    prefix_map = {
+        "x": "X 动态：",
+        "wechat": "微信文章：",
+        "arxiv": "论文速览：",
+        "bilibili": "视频内容：",
+        "rss": "内容速览：",
+    }
+    prefix = prefix_map.get(source_type, "内容速览：")
+    return truncate_text(f"{prefix}{title}", 80)
+
+
+def _auto_summary_cn(entry: Dict[str, Any]) -> str:
+    existing = str(entry.get("summary_cn") or "").strip()
+    if existing:
+        return existing
+    summary = strip_summary_markup(str(entry.get("summary") or ""))
+    content = strip_summary_markup(str(entry.get("content_text") or ""))
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    title = RT_PREFIX_PAT.sub("", title)
+    body = summary or content or title
+    if not body:
+        return ""
+    if contains_cjk(body):
+        return truncate_text(body, 180)
+    return truncate_text(f"原文摘要：{body}", 220)
+
+
+def auto_complete_enrich_payload(enrich_payload: Dict[str, Any], output_path: Path) -> Dict[str, Any]:
+    entries = []
+    for raw in list(enrich_payload.get("entries") or []):
+        entry = dict(raw)
+        entry["one_liner_zh"] = _auto_one_liner_zh(entry)
+        entry["summary_cn"] = _auto_summary_cn(entry)
+        entry["needs_agent_summary"] = not (str(entry.get("one_liner_zh") or "").strip() and str(entry.get("summary_cn") or "").strip())
+        entry["agent_summary_prompt"] = ""
+        entries.append(entry)
+    payload = dict(enrich_payload)
+    payload["entries"] = entries
+    payload["agent_completion"] = {
+        "required": False,
+        "task_count": 0,
+        "recommended_batch_size": 0,
+        "recommended_worker": "rss-daily-auto-workers",
+        "tasks": [],
+        "note": "Chinese fields were auto-filled for auto-workers mode.",
+    }
+    write_json(output_path, payload)
+    stage_log("enrich", "auto-filled-chinese", output_path=str(output_path), entry_count=len(entries))
     return payload
 
 
@@ -1071,13 +1373,19 @@ def command_daily(args: argparse.Namespace) -> int:
     recent_story_history = build_story_history(output_root, run_date, history_lookback_days, paths.story_history_json)
     story_ledger = load_story_ledger(paths.story_ledger_json)
     story_history = build_combined_story_history(recent_story_history, story_ledger, paths.story_history_json)
+    collect_runtime = rss_collect_runtime(config)
 
     stage_log("daily", "start", config=str(config_path), date=run_date, output_root=str(run_root))
     raw_payload = collect_daily(config_path, paths.raw_json)
     if bool(focus.get("strict_date_only", True)):
         raw_payload = filter_items_to_run_date(raw_payload, run_date, paths.raw_json)
     normalize_daily(paths.raw_json, paths.normalized_json)
-    fetch_daily(paths.normalized_json, paths.fetched_json)
+    fetch_daily(
+        paths.normalized_json,
+        paths.fetched_json,
+        max_workers=collect_runtime["max_workers"],
+        request_timeout_seconds=collect_runtime["request_timeout_seconds"],
+    )
     dedupe_daily(paths.fetched_json, paths.deduped_json)
     clustered_payload = cluster_daily(paths.deduped_json, paths.clustered_json)
 
@@ -1113,6 +1421,8 @@ def command_daily(args: argparse.Namespace) -> int:
     enrich_payload = run_enrich(filter_payload, paths.enrich_results)
     if args.require_agent_enrich:
         ensure_agent_completion_done(enrich_payload, paths.enrich_results)
+    elif args.auto_workers:
+        enrich_payload = auto_complete_enrich_payload(enrich_payload, paths.enrich_results)
     else:
         stage_log(
             "enrich",

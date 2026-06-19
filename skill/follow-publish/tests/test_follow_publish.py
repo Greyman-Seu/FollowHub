@@ -424,6 +424,21 @@ class FollowPublishSkillTests(unittest.TestCase):
         self.assertTrue(any("Arxiv A" in item for item in highlights))
         self.assertTrue(any("Wechat A" in item for item in highlights))
 
+    def test_build_digest_summary_includes_x_counts(self):
+        summary = self.module.build_digest_summary(
+            "2026-06-18",
+            [
+                {"source_type": "x", "count": 47},
+                {"source_type": "wechat", "count": 3},
+            ],
+            {"arxiv": 0, "wechat": 3, "x": 47, "bilibili": 0},
+            "fallback summary",
+        )
+        self.assertEqual(
+            summary,
+            "2026-06-18 Follow daily selected 3 WeChat item(s) and 47 X / Twitter item(s).",
+        )
+
     def test_build_package_can_sync_page_data_dir(self):
         digest = self.module.validate_digest(
             {

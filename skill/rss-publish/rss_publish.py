@@ -48,8 +48,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv or [])
     if not argv:
-        import sys
-
         argv = sys.argv[1:]
     if not argv or argv[0] == "help":
         print(HELP_TEXT)
@@ -59,7 +57,9 @@ def main(argv: list[str] | None = None) -> int:
         digest = load_json(Path(args.input))
         digest_date = args.date or str(digest.get("date") or "")
         digest_path = Path(args.input)
-        digest_path.write_text(json.dumps({"date": digest_date, **digest}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        payload = dict(digest)
+        payload["date"] = digest_date
+        digest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         proc = run_command(
             [
                 sys.executable,

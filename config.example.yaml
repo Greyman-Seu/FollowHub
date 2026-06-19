@@ -40,11 +40,23 @@ rss:
   # Keep large source lists in a separate file when subscriptions grow.
   # Example: rss_sources.yaml
   sources_file: rss_sources.yaml
+  # Add extra source files for segmented lists such as x/nitter feeds.
+  source_files: []
 
   daily:
     # Keep only recent entries per source in the daily raw bundle.
     lookback_days: 2
     max_items_per_source: 50
+
+  collect:
+    # RSS fetching is network I/O bound; prefer in-process concurrency.
+    max_workers: 8
+    request_timeout_seconds: 30
+
+  proxy:
+    # For Nitter / X style feeds, terminal networking often needs explicit proxy config.
+    http: ""
+    https: ""
 
   # Small setups can inline sources here instead of using sources_file.
   sources: []

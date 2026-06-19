@@ -8,17 +8,26 @@ import concurrent.futures
 import email.utils
 import json
 import os
+import shutil
+import subprocess
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlparse
 
 try:
     import yaml  # type: ignore
 except Exception:
     yaml = None
+
+try:
+    import requests as _requests  # type: ignore
+except Exception:
+    _requests = None
 
 
 HELP_TEXT = """\
@@ -51,6 +60,7 @@ class SourceConfig:
 
 
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
+X_SOURCE_HOSTS = {"nitter.net"}
 
 
 def resolve_proxy_settings(rss: Dict[str, Any]) -> Dict[str, str]:
@@ -274,13 +284,90 @@ def load_rss_settings(config_path: Path) -> Dict[str, Any]:
     }
 
 
+def source_hostname(source: SourceConfig) -> str:
+    try:
+        return str(urlparse(source.feed_url).hostname or "").strip().lower()
+    except Exception:
+        return ""
+
+
+def is_x_style_source(source: SourceConfig) -> bool:
+    return source.source_type == "x" or source_hostname(source) in X_SOURCE_HOSTS
+
+
+def is_retryable_fetch_error(exc: Exception) -> bool:
+    lowered = str(exc).strip().lower()
+    retry_hints = (
+        "timed out",
+        "timeout",
+        "temporary",
+        "temporarily unavailable",
+        "connection reset",
+        "connection aborted",
+        "remote end closed",
+        "ssl",
+        "tls",
+        "503",
+        "502",
+        "429",
+    )
+    return any(hint in lowered for hint in retry_hints)
+
+
+def collect_policy(settings: Dict[str, Any], source: SourceConfig) -> Dict[str, Any]:
+    workers = int(settings["max_workers"])
+    timeout = int(settings["request_timeout_seconds"])
+    if is_x_style_source(source):
+        return {
+            "max_workers": min(4, workers) if workers > 1 else 1,
+            "request_timeout_seconds": min(12, max(8, timeout)),
+            "retry_count": 1,
+            "retry_backoff_seconds": 0.5,
+        }
+    return {
+        "max_workers": workers,
+        "request_timeout_seconds": timeout,
+        "retry_count": 0,
+        "retry_backoff_seconds": 0.0,
+    }
+
+
 def fetch_text(url: str, timeout: int = 30) -> str:
+    hostname = str(urlparse(url).hostname or "").strip().lower()
+    headers = {
+        "User-Agent": "followhub-rss-collect/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+    }
+
+    if hostname in X_SOURCE_HOSTS and _requests is not None:
+        response = _requests.get(url, timeout=timeout, headers=headers)
+        response.raise_for_status()
+        return response.text
+
+    if hostname in X_SOURCE_HOSTS and shutil.which("curl"):
+        proc = subprocess.run(
+            [
+                "curl",
+                "-L",
+                "--max-time",
+                str(max(1, int(timeout))),
+                "-A",
+                headers["User-Agent"],
+                "-H",
+                f"Accept: {headers['Accept']}",
+                url,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return proc.stdout
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(detail or f"curl exited with status {proc.returncode}")
     request = urllib.request.Request(
         url,
-        headers={
-            "User-Agent": "followhub-rss-collect/0.1 (+https://github.com/Greyman-Seu/FollowHub)",
-            "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
-        },
+        headers=headers,
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read().decode("utf-8", errors="ignore")
@@ -571,31 +658,76 @@ def collect_one_source(
     default_max_items: int,
     request_timeout_seconds: int,
     proxy_settings: Dict[str, str],
+    retry_count: int = 0,
+    retry_backoff_seconds: float = 0.0,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    try:
-        source_items = collect_source_items(
-            source,
-            lookback_days=lookback_days,
-            default_max_items=default_max_items,
-            request_timeout_seconds=request_timeout_seconds,
-        )
-    except Exception as exc:
-        return [], {
-            "name": source.name,
-            "type": source.source_type,
-            "feed_url": source.feed_url,
-            "item_count": 0,
-            "status": "error",
-            "error": format_network_error(exc, proxy_settings),
-        }
+    last_exc: Optional[Exception] = None
+    for attempt in range(max(0, retry_count) + 1):
+        try:
+            source_items = collect_source_items(
+                source,
+                lookback_days=lookback_days,
+                default_max_items=default_max_items,
+                request_timeout_seconds=request_timeout_seconds,
+            )
+            return source_items, {
+                "name": source.name,
+                "type": source.source_type,
+                "feed_url": source.feed_url,
+                "item_count": len(source_items),
+                "status": "ok",
+                "attempts": attempt + 1,
+            }
+        except Exception as exc:
+            last_exc = exc
+            if attempt >= retry_count or not is_retryable_fetch_error(exc):
+                break
+            if retry_backoff_seconds > 0:
+                time.sleep(retry_backoff_seconds * (attempt + 1))
 
-    return source_items, {
+    return [], {
         "name": source.name,
         "type": source.source_type,
         "feed_url": source.feed_url,
-        "item_count": len(source_items),
-        "status": "ok",
+        "item_count": 0,
+        "status": "error",
+        "error": format_network_error(last_exc or RuntimeError("unknown error"), proxy_settings),
+        "attempts": max(0, retry_count) + 1,
     }
+
+
+def collect_source_batch(
+    sources: List[SourceConfig],
+    *,
+    lookback_days: int,
+    default_max_items: int,
+    request_timeout_seconds: int,
+    proxy_settings: Dict[str, str],
+    max_workers: int,
+    retry_count: int,
+    retry_backoff_seconds: float,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    items: List[Dict[str, Any]] = []
+    stats: List[Dict[str, Any]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
+        futures = {
+            executor.submit(
+                collect_one_source,
+                source,
+                lookback_days=lookback_days,
+                default_max_items=default_max_items,
+                request_timeout_seconds=request_timeout_seconds,
+                proxy_settings=dict(proxy_settings),
+                retry_count=retry_count,
+                retry_backoff_seconds=retry_backoff_seconds,
+            ): source
+            for source in sources
+        }
+        for future in concurrent.futures.as_completed(futures):
+            source_items, source_stat = future.result()
+            items.extend(source_items)
+            stats.append(source_stat)
+    return items, stats
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -614,22 +746,37 @@ def main(argv: List[str] | None = None) -> int:
         apply_proxy_settings(dict(settings["proxy_settings"]))
         items: List[Dict[str, Any]] = []
         source_stats = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=int(settings["max_workers"])) as executor:
-            futures = {
-                executor.submit(
-                    collect_one_source,
-                    source,
-                    lookback_days=int(settings["lookback_days"]),
-                    default_max_items=int(settings["max_items_per_source"]),
-                    request_timeout_seconds=int(settings["request_timeout_seconds"]),
-                    proxy_settings=dict(settings["proxy_settings"]),
-                ): source
-                for source in sources
-            }
-            for future in concurrent.futures.as_completed(futures):
-                source_items, source_stat = future.result()
-                items.extend(source_items)
-                source_stats.append(source_stat)
+        x_sources = [source for source in sources if is_x_style_source(source)]
+        default_sources = [source for source in sources if not is_x_style_source(source)]
+
+        if default_sources:
+            default_items, default_stats = collect_source_batch(
+                default_sources,
+                lookback_days=int(settings["lookback_days"]),
+                default_max_items=int(settings["max_items_per_source"]),
+                request_timeout_seconds=int(settings["request_timeout_seconds"]),
+                proxy_settings=dict(settings["proxy_settings"]),
+                max_workers=int(settings["max_workers"]),
+                retry_count=0,
+                retry_backoff_seconds=0.0,
+            )
+            items.extend(default_items)
+            source_stats.extend(default_stats)
+
+        if x_sources:
+            x_policy = collect_policy(settings, x_sources[0])
+            x_items, x_stats = collect_source_batch(
+                x_sources,
+                lookback_days=int(settings["lookback_days"]),
+                default_max_items=int(settings["max_items_per_source"]),
+                request_timeout_seconds=int(x_policy["request_timeout_seconds"]),
+                proxy_settings=dict(settings["proxy_settings"]),
+                max_workers=int(x_policy["max_workers"]),
+                retry_count=int(x_policy["retry_count"]),
+                retry_backoff_seconds=float(x_policy["retry_backoff_seconds"]),
+            )
+            items.extend(x_items)
+            source_stats.extend(x_stats)
         source_stats.sort(key=lambda item: str(item.get("name") or ""))
         items = dedup_items(items)
         payload = {
@@ -638,6 +785,7 @@ def main(argv: List[str] | None = None) -> int:
             "source_count": len(sources),
             "item_count": len(items),
             "max_workers": int(settings["max_workers"]),
+            "x_source_count": len(x_sources),
             "proxy_enabled": bool(settings["proxy_settings"]),
             "sources": source_stats,
             "items": items,

@@ -123,6 +123,81 @@ rss:
                     os.environ["HTTP_PROXY"] = old_http
         self.assertEqual(settings["proxy_settings"]["HTTP_PROXY"], "http://127.0.0.1:9999")
 
+    def test_collect_policy_uses_conservative_settings_for_x_sources(self):
+        settings = {
+            "lookback_days": 2,
+            "max_items_per_source": 50,
+            "max_workers": 8,
+            "request_timeout_seconds": 30,
+            "proxy_settings": {},
+        }
+        src = self.module.SourceConfig(
+            name="x-sama",
+            source_type="x",
+            feed_url="https://nitter.net/sama/rss",
+        )
+        policy = self.module.collect_policy(settings, src)
+        self.assertEqual(policy["max_workers"], 4)
+        self.assertEqual(policy["retry_count"], 1)
+        self.assertGreaterEqual(policy["request_timeout_seconds"], 8)
+
+    def test_collect_one_source_retries_retryable_timeout(self):
+        src = self.module.SourceConfig(
+            name="x-sama",
+            source_type="x",
+            feed_url="https://nitter.net/sama/rss",
+        )
+        calls = {"count": 0}
+
+        def fake_collect_source_items(source, *, lookback_days, default_max_items, request_timeout_seconds):
+            calls["count"] += 1
+            if calls["count"] == 1:
+                raise RuntimeError("timed out")
+            return [{"id": "x:1", "title": "ok"}]
+
+        with patch.object(self.module, "collect_source_items", side_effect=fake_collect_source_items):
+            items, stat = self.module.collect_one_source(
+                src,
+                lookback_days=2,
+                default_max_items=10,
+                request_timeout_seconds=20,
+                proxy_settings={},
+                retry_count=1,
+                retry_backoff_seconds=0.0,
+            )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(stat["status"], "ok")
+        self.assertEqual(stat["attempts"], 2)
+
+    def test_fetch_text_uses_curl_for_nitter_sources(self):
+        completed = subprocess.CompletedProcess(
+            args=["curl"],
+            returncode=0,
+            stdout="<rss></rss>",
+            stderr="",
+        )
+        with patch.object(self.module, "_requests", None):
+            with patch.object(self.module.shutil, "which", return_value="/usr/bin/curl"):
+                with patch.object(self.module.subprocess, "run", return_value=completed) as mocked_run:
+                    text = self.module.fetch_text("https://nitter.net/sama/rss", timeout=12)
+        self.assertEqual(text, "<rss></rss>")
+        mocked_run.assert_called_once()
+
+    def test_fetch_text_prefers_requests_for_nitter_sources(self):
+        class Resp:
+            status_code = 200
+            text = "<rss></rss>"
+
+            def raise_for_status(self):
+                return None
+
+        fake_requests = type("R", (), {"get": staticmethod(lambda url, timeout, headers: Resp())})
+        with patch.object(self.module, "_requests", fake_requests):
+            with patch.object(self.module.subprocess, "run") as mocked_run:
+                text = self.module.fetch_text("https://nitter.net/sama/rss", timeout=12)
+        self.assertEqual(text, "<rss></rss>")
+        mocked_run.assert_not_called()
+
     def test_format_network_error_suggests_proxy_when_dns_fails(self):
         message = self.module.format_network_error(Exception("[Errno 8] nodename nor servname provided, or not known"), {})
         self.assertIn("HTTP_PROXY/HTTPS_PROXY", message)

@@ -21,6 +21,10 @@ def load_module():
 
 
 class RssDailySkillTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = load_module()
+
     def test_help_command_succeeds(self):
         result = subprocess.run(
             [sys.executable, str(SCRIPT_PATH), "--help"],
@@ -55,6 +59,133 @@ class RssDailySkillTests(unittest.TestCase):
                 }
             )
         )
+
+    def test_auto_complete_enrich_payload_fills_missing_chinese_fields(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "x:1",
+                    "source_type": "x",
+                    "title": "A new robotics model for long-horizon manipulation",
+                    "summary": "This paper introduces a robotics model for manipulation.",
+                    "content_text": "This paper introduces a robotics model for manipulation and planning.",
+                    "one_liner_zh": "",
+                    "summary_cn": "",
+                },
+                {
+                    "id": "wechat:1",
+                    "source_type": "wechat",
+                    "title": "机器人操作新进展",
+                    "summary": "机器人操作新进展摘要",
+                    "content_text": "",
+                    "one_liner_zh": "",
+                    "summary_cn": "",
+                },
+            ],
+            "agent_completion": {"required": True, "task_count": 2, "tasks": [{"id": "x:1"}, {"id": "wechat:1"}]},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "enrich_results.json"
+            completed = self.module.auto_complete_enrich_payload(payload, out)
+            self.assertEqual(len(completed["entries"]), 2)
+            self.assertFalse(completed["agent_completion"]["required"])
+            self.assertEqual(completed["agent_completion"]["task_count"], 0)
+            self.assertTrue(completed["entries"][0]["one_liner_zh"])
+            self.assertTrue(completed["entries"][0]["summary_cn"])
+            self.assertIn("X 动态", completed["entries"][0]["one_liner_zh"])
+            self.assertEqual(completed["entries"][1]["one_liner_zh"], "机器人操作新进展")
+            self.assertEqual(completed["entries"][1]["summary_cn"], "机器人操作新进展摘要")
+            saved = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(saved["agent_completion"]["task_count"], 0)
+
+    def test_auto_filter_drops_low_signal_x_promo(self):
+        filter_candidates = [
+            {
+                "id": "x:1",
+                "source_type": "x",
+                "source_name": "x-someone",
+                "title": "30 Agents Every AI Engineer Must Build",
+                "summary": "What you will learn: deploy production-ready agent systems. http://amzn.to/abc",
+                "content_text": "What you will learn: deploy production-ready agent systems. http://amzn.to/abc",
+                "story_id": "story:1",
+                "story_status": "new",
+                "published_at": "2026-06-18T00:00:00+00:00",
+                "canonical_id": "x:1",
+                "duplicate_count": 0,
+                "duplicate_items": [],
+            }
+        ]
+        focus = {"keywords": ["robot", "llm", "agent"], "exclude_keywords": [], "topic_context": ""}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "filter_results.json"
+            payload = self.module.auto_filter(filter_candidates, focus, out, {"stories": []})
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertFalse(payload["items"][0]["include_in_digest"])
+        self.assertIn("promotional or low-signal", payload["items"][0]["reason"])
+
+    def test_auto_filter_keeps_x_with_technical_signal(self):
+        filter_candidates = [
+            {
+                "id": "x:1",
+                "source_type": "x",
+                "source_name": "x-someone",
+                "title": "RT by @someone: New robotics benchmark released",
+                "summary": "Paper: https://arxiv.org/abs/2606.12345 New benchmark for robot manipulation policy learning.",
+                "content_text": "Paper: https://arxiv.org/abs/2606.12345 New benchmark for robot manipulation policy learning.",
+                "story_id": "story:1",
+                "story_status": "new",
+                "published_at": "2026-06-18T00:00:00+00:00",
+                "canonical_id": "x:1",
+                "duplicate_count": 0,
+                "duplicate_items": [],
+            }
+        ]
+        focus = {"keywords": ["robot", "llm", "agent"], "exclude_keywords": [], "topic_context": ""}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "filter_results.json"
+            payload = self.module.auto_filter(filter_candidates, focus, out, {"stories": []})
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertTrue(payload["items"][0]["include_in_digest"])
+
+    def test_auto_filter_drops_wechat_recent_repeat_without_followup_signal(self):
+        filter_candidates = [
+            {
+                "id": "wechat:1",
+                "source_type": "wechat",
+                "source_name": "wechat-demo",
+                "title": "腾讯混元最新开源：一套RL框架打通多个模态，庞天宇团队新作",
+                "summary": "开箱即用，视频图文全适配",
+                "content_text": "腾讯混元最新开源，一套RL框架打通多个模态，适用于视频图文全适配。",
+                "story_id": "story:wechat-demo",
+                "story_status": "new",
+                "published_at": "2026-06-18T00:00:00+00:00",
+                "canonical_id": "wechat:1",
+                "duplicate_count": 0,
+                "duplicate_items": [],
+            }
+        ]
+        focus = {"keywords": ["robot", "llm", "agent"], "exclude_keywords": [], "topic_context": ""}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "filter_results.json"
+            payload = self.module.auto_filter(
+                filter_candidates,
+                focus,
+                out,
+                {"stories": [{"story_id": "story:wechat-demo"}]},
+            )
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertFalse(payload["items"][0]["include_in_digest"])
+
+    def test_infer_domains_handles_chinese_technical_signals(self):
+        entry = {
+            "title": "腾讯混元最新开源：一套RL框架打通多个模态",
+            "summary": "多模态推理与视频图文能力",
+            "content_text": "这是一套开源的多模态大模型 RL 框架。",
+            "tags": ["wechat", "ai"],
+        }
+        domains = self.module.infer_domains(entry)
+        slugs = {item["slug"] for item in domains}
+        self.assertIn("llm-vlm", slugs)
 
     def test_daily_stops_when_prefilter_results_missing(self):
         config_text = """
@@ -115,7 +246,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 10
   sources:
     - name: test-wechat
@@ -174,7 +305,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 10
   sources:
     - name: feed-a
@@ -263,7 +394,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
   keywords:
     - robot
@@ -376,7 +507,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
   strict_date_only: true
   keywords:
@@ -447,7 +578,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
   strict_date_only: true
   keywords:
@@ -536,7 +667,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
   strict_date_only: true
   keywords:
@@ -644,7 +775,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
     history_lookback_days: 7
   strict_date_only: true
@@ -736,7 +867,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
     history_lookback_days: 7
   strict_date_only: true
@@ -838,7 +969,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
     history_lookback_days: 7
   strict_date_only: true
@@ -907,7 +1038,7 @@ rss:
         config_text = """
 rss:
   daily:
-    lookback_days: 30
+    lookback_days: 4000
     max_items_per_source: 20
     history_lookback_days: 7
   strict_date_only: true

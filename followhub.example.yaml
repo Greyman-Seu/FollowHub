@@ -121,7 +121,16 @@ rss:
     max_items_per_source: 30
     history_lookback_days: 7
 
+  collect:
+    max_workers: 8
+    request_timeout_seconds: 30
+
+  proxy:
+    http: ""
+    https: ""
+
   sources_file: rss_sources.yaml
+  source_files: []
 
   # Small setups can inline sources here before moving to rss_sources.yaml.
   sources: []

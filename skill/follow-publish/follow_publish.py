@@ -428,10 +428,22 @@ def build_digest_summary(date_value: str, sections: Sequence[Dict[str, Any]], co
     source_types = [section.get("source_type") for section in sections if section.get("count")]
     if source_types and all(source == "arxiv" for source in source_types):
         return f"{date_value} arXiv daily selected {counts.get('arxiv', 0)} papers for follow-up."
-    if counts.get("arxiv", 0) and counts.get("wechat", 0):
-        return f"{date_value} Follow daily selected {counts.get('arxiv', 0)} arXiv paper(s) and {counts.get('wechat', 0)} WeChat item(s)."
-    if counts.get("wechat", 0) and not counts.get("arxiv", 0):
-        return f"{date_value} Follow daily selected {counts.get('wechat', 0)} WeChat item(s)."
+    nonzero_parts = []
+    for source in SOURCE_ORDER:
+        count = int(counts.get(source, 0) or 0)
+        if count <= 0:
+            continue
+        label = normalize_source_name(source)
+        if source == "arxiv":
+            nonzero_parts.append(f"{count} {label} paper(s)")
+        else:
+            nonzero_parts.append(f"{count} {label} item(s)")
+    if nonzero_parts:
+        if len(nonzero_parts) == 1:
+            return f"{date_value} Follow daily selected {nonzero_parts[0]}."
+        if len(nonzero_parts) == 2:
+            return f"{date_value} Follow daily selected {nonzero_parts[0]} and {nonzero_parts[1]}."
+        return f"{date_value} Follow daily selected {', '.join(nonzero_parts[:-1])}, and {nonzero_parts[-1]}."
     return original_summary
 
 

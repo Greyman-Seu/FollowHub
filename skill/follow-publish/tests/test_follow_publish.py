@@ -491,6 +491,9 @@ class FollowPublishSkillTests(unittest.TestCase):
         self.assertEqual(item["summary"], "发布了一项新功能或产品更新。")
         self.assertEqual(item["summary_cn"], "")
         self.assertEqual(item["abstract_en"], "")
+        self.assertEqual(item["url"], "https://x.com/gdb/status/1")
+        self.assertEqual(item["links"][0]["href"], "https://x.com/gdb/status/1")
+        self.assertEqual(item["links"][1]["label"], "Nitter")
 
     def test_build_package_can_sync_page_data_dir(self):
         digest = self.module.validate_digest(

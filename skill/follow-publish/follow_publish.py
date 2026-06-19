@@ -85,6 +85,7 @@ def normalize_source_name(source: str) -> str:
 
 
 X_HANDLE_PAT = re.compile(r"(?:nitter\.net|x\.com|twitter\.com)/([^/?#]+)", re.IGNORECASE)
+NITTER_STATUS_PAT = re.compile(r"https?://(?:www\.)?nitter\.net/([^/?#]+)/status/(\d+)", re.IGNORECASE)
 
 
 def as_string_list(value: Any) -> List[str]:
@@ -401,6 +402,17 @@ def extract_x_handle(item: Dict[str, Any]) -> str:
     return match.group(1).replace("@", "").strip() if match else ""
 
 
+def to_original_x_url(url: str) -> str:
+    value = str(url or "").strip()
+    if not value:
+        return ""
+    match = NITTER_STATUS_PAT.match(value)
+    if match:
+        handle, status_id = match.groups()
+        return f"https://x.com/{handle}/status/{status_id}"
+    return value
+
+
 def resolve_item_source_type(item: Dict[str, Any]) -> str:
     declared = str(item.get("source_type") or "").strip().lower()
     if declared:
@@ -422,6 +434,35 @@ def build_public_item_summary(item: Dict[str, Any]) -> str:
                 return value
         return "分享了一条值得关注的动态。"
     return str(item.get("summary") or item.get("one_liner_zh") or item.get("title") or "").strip()
+
+
+def normalize_x_public_links(item: Dict[str, Any]) -> Dict[str, Any]:
+    candidate = deepcopy(item)
+    mirror_url = str(candidate.get("url") or "").strip()
+    original_url = to_original_x_url(mirror_url)
+    if original_url:
+        candidate["url"] = original_url
+    links = []
+    seen = set()
+
+    def add_link(label: str, href: str) -> None:
+        clean_href = str(href or "").strip()
+        if not clean_href or clean_href in seen:
+            return
+        seen.add(clean_href)
+        links.append({"label": label, "href": clean_href})
+
+    add_link("Original", original_url or mirror_url)
+    if mirror_url and mirror_url != (original_url or mirror_url):
+        add_link("Nitter", mirror_url)
+    for link in candidate.get("links") or []:
+        href = str(link.get("href") or "").strip()
+        label = str(link.get("label") or "Link").strip() or "Link"
+        if href == mirror_url and original_url:
+            label = "Nitter"
+        add_link(label, href)
+    candidate["links"] = links
+    return candidate
 
 
 def build_highlight_text(item: Dict[str, Any]) -> str:
@@ -533,6 +574,7 @@ def sanitize_digests_for_publication(digests: Sequence[Dict[str, Any]]) -> List[
                     candidate["summary"] = build_public_item_summary(candidate)
                     candidate["summary_cn"] = ""
                     candidate["abstract_en"] = ""
+                    candidate = normalize_x_public_links(candidate)
                 published_items.append(candidate)
             published_sections.append(
                 {

@@ -393,6 +393,23 @@ def first_sentence(value: str) -> str:
     return parts[0].strip() if parts else text
 
 
+def split_title_parts(title: str) -> tuple[str, str]:
+    text = " ".join(str(title or "").split()).strip().strip("。")
+    if not text:
+        return "", ""
+    for sep in ("｜", "|", "：", ":"):
+        if sep in text:
+            left, right = text.split(sep, 1)
+            return left.strip(" “ ” \" "), right.strip(" “ ” \" ")
+    if "？" in text:
+        left, right = text.split("？", 1)
+        return left.strip(" “ ” \" "), right.strip(" “ ” \" ")
+    if "?" in text:
+        left, right = text.split("?", 1)
+        return left.strip(" “ ” \" "), right.strip(" “ ” \" ")
+    return text, ""
+
+
 def needs_x_auto_refresh(value: str, *, one_liner: bool) -> bool:
     text = str(value or "").strip()
     if not text:
@@ -407,6 +424,28 @@ def needs_x_auto_refresh(value: str, *, one_liner: bool) -> bool:
     if not one_liner and text.startswith("原文摘要："):
         return True
     return False
+
+
+def needs_wechat_auto_refresh_one_liner(existing: str, title: str) -> bool:
+    text = str(existing or "").strip()
+    if not text:
+        return True
+    if text == str(title or "").strip():
+        return True
+    if "给出的回答是" in text and "？" in text:
+        return True
+    return count_cjk_chars(text) < 12
+
+
+def needs_wechat_auto_refresh_summary(existing: str, title: str) -> bool:
+    text = str(existing or "").strip()
+    if not text:
+        return True
+    if text == str(title or "").strip():
+        return True
+    if "给出的答案是" in text and "？" in text:
+        return True
+    return count_cjk_chars(text) < 24
 
 
 def infer_x_one_liner_zh(entry: Dict[str, Any]) -> str:
@@ -445,6 +484,49 @@ def infer_x_one_liner_zh(entry: Dict[str, Any]) -> str:
     if is_retweet:
         return "转发并评论了一条值得关注的动态。"
     return "分享了一条值得查看的动态。"
+
+
+def infer_wechat_one_liner_zh(entry: Dict[str, Any]) -> str:
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    summary = strip_summary_markup(str(entry.get("summary") or ""))
+    left, right = split_title_parts(title)
+    right_clean = right.rstrip("？?。")
+    right_is_question = ("？" in right) or ("?" in right)
+    if "？" in title and right:
+        if right_is_question and summary:
+            return truncate_text(f"文章讨论{left}，对“{right_clean}”的判断是{summary}。", 72)
+        if summary and summary not in right:
+            return truncate_text(f"文章围绕“{left}”展开，给出的回答是{right}，并强调{summary}。", 72)
+        return truncate_text(f"文章围绕“{left}”展开，给出的回答是{right}。", 66)
+    if right and summary:
+        if summary in right or right in summary:
+            return truncate_text(f"文章介绍{right}。", 64)
+        return truncate_text(f"文章介绍{right}，重点是{summary}。", 72)
+    if summary and summary != title:
+        topic = left or title
+        return truncate_text(f"文章围绕{topic}展开，重点是{summary}。", 72)
+    return truncate_text(title, 60)
+
+
+def infer_wechat_summary_cn(entry: Dict[str, Any]) -> str:
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    summary = strip_summary_markup(str(entry.get("summary") or ""))
+    left, right = split_title_parts(title)
+    right_clean = right.rstrip("？?。")
+    right_is_question = ("？" in right) or ("?" in right)
+    if "？" in title and right:
+        if right_is_question and summary:
+            return truncate_text(f"本文讨论{left}，围绕“{right_clean}”这个问题给出的结论是{summary}。", 140)
+        if summary and summary not in right:
+            return truncate_text(f"本文从“{left}”这个问题切入，给出的答案是{right}，并进一步指出{summary}。", 140)
+        return truncate_text(f"本文从“{left}”这个问题切入，给出的答案是{right}。", 120)
+    if right and summary:
+        if summary in right or right in summary:
+            return truncate_text(f"本文介绍{left or title}，核心内容是{right}。", 130)
+        return truncate_text(f"本文介绍{left or title}，核心内容是{right}，并强调{summary}。", 140)
+    if summary and summary != title:
+        return truncate_text(f"本文围绕{title}展开，重点信息是{summary}。", 130)
+    return truncate_text(title, 100)
 
 
 def combined_entry_text(entry: Dict[str, Any]) -> str:
@@ -1237,12 +1319,15 @@ def _auto_one_liner_zh(entry: Dict[str, Any]) -> str:
     existing = str(entry.get("one_liner_zh") or "").strip()
     source_type = str(entry.get("source_type") or "rss").strip().lower()
     if existing and not (source_type == "x" and needs_x_auto_refresh(existing, one_liner=True)):
-        return existing
+        if source_type != "wechat" or not needs_wechat_auto_refresh_one_liner(existing, str(entry.get("title") or "")):
+            return existing
     title = strip_summary_markup(str(entry.get("title") or ""))
     title = RT_PREFIX_PAT.sub("", title)
     title = " ".join(title.split()).strip()
     if source_type == "x":
         return infer_x_one_liner_zh(entry)
+    if source_type == "wechat":
+        return infer_wechat_one_liner_zh(entry)
     if not title:
         return ""
     if contains_cjk(title):
@@ -1262,7 +1347,8 @@ def _auto_summary_cn(entry: Dict[str, Any]) -> str:
     existing = str(entry.get("summary_cn") or "").strip()
     source_type = str(entry.get("source_type") or "rss").strip().lower()
     if existing and not (source_type == "x" and needs_x_auto_refresh(existing, one_liner=False)):
-        return existing
+        if source_type != "wechat" or not needs_wechat_auto_refresh_summary(existing, str(entry.get("title") or "")):
+            return existing
     summary = strip_summary_markup(str(entry.get("summary") or ""))
     content = strip_summary_markup(str(entry.get("content_text") or ""))
     title = strip_summary_markup(str(entry.get("title") or ""))
@@ -1273,6 +1359,8 @@ def _auto_summary_cn(entry: Dict[str, Any]) -> str:
     if source_type == "x":
         line = infer_x_one_liner_zh(entry)
         return line if line else "分享了一条值得关注的动态。"
+    if source_type == "wechat":
+        return infer_wechat_summary_cn(entry)
     if contains_cjk(body):
         return truncate_text(body, 180)
     return truncate_text(f"原文摘要：{body}", 220)

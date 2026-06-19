@@ -94,8 +94,8 @@ class RssDailySkillTests(unittest.TestCase):
             self.assertTrue(completed["entries"][0]["summary_cn"])
             self.assertIn("机器人", completed["entries"][0]["one_liner_zh"])
             self.assertTrue(self.module.contains_cjk(completed["entries"][0]["summary_cn"]))
-            self.assertEqual(completed["entries"][1]["one_liner_zh"], "机器人操作新进展")
-            self.assertEqual(completed["entries"][1]["summary_cn"], "机器人操作新进展摘要")
+            self.assertIn("机器人操作新进展", completed["entries"][1]["one_liner_zh"])
+            self.assertIn("机器人操作新进展摘要", completed["entries"][1]["summary_cn"])
             saved = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(saved["agent_completion"]["task_count"], 0)
 
@@ -120,6 +120,29 @@ class RssDailySkillTests(unittest.TestCase):
             entry = completed["entries"][0]
             self.assertEqual(entry["one_liner_zh"], "讨论了 AI 说服能力及其潜在社会影响。")
             self.assertEqual(entry["summary_cn"], "讨论了 AI 说服能力及其潜在社会影响。")
+
+    def test_auto_complete_enrich_payload_rewrites_wechat_low_information_fields(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "wechat:1",
+                    "source_type": "wechat",
+                    "title": "3B小模型逼近Claude Opus 4.5：基准坏了，还是后训练太强？",
+                    "summary": "后训练把小模型推上前沿",
+                    "content_text": "后训练把小模型推上前沿",
+                    "one_liner_zh": "3B小模型逼近Claude Opus 4.5：基准坏了，还是后训练太强？",
+                    "summary_cn": "后训练把小模型推上前沿",
+                }
+            ],
+            "agent_completion": {"required": True, "task_count": 1, "tasks": [{"id": "wechat:1"}]},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "enrich_results.json"
+            completed = self.module.auto_complete_enrich_payload(payload, out)
+            entry = completed["entries"][0]
+            self.assertNotEqual(entry["one_liner_zh"], payload["entries"][0]["title"])
+            self.assertIn("后训练把小模型推上前沿", entry["one_liner_zh"])
+            self.assertIn("后训练把小模型推上前沿", entry["summary_cn"])
 
     def test_auto_filter_drops_low_signal_x_promo(self):
         filter_candidates = [

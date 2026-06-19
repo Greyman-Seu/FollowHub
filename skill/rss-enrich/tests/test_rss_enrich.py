@@ -47,11 +47,13 @@ class RssEnrichSkillTests(unittest.TestCase):
             "items": [
                 {
                     "id": "wechat:1",
+                    "source_type": "wechat",
                     "title": "Example",
                     "summary": "This is an example summary.",
                     "content_text": "This is an example content body.",
                     "one_liner_zh": "一句话。",
                     "summary_cn": "中文摘要。",
+                    "summary_generated_by": "agent",
                     "related_organizations": ["Stanford University"],
                     "related_companies": ["OpenAI"],
                     "key_people": ["Sergey Levine"],
@@ -69,17 +71,39 @@ class RssEnrichSkillTests(unittest.TestCase):
             "items": [
                 {
                     "id": "wechat:1",
+                    "source_type": "wechat",
                     "title": "Example",
                     "summary": "This is an example summary.",
                     "content_text": "This is an example content body.",
                     "one_liner_zh": "一句话。",
                     "summary_cn": "中文摘要。",
+                    "summary_generated_by": "agent",
                 }
             ]
         }
         enriched = self.module.enrich_payload(payload)
         self.assertFalse(enriched["agent_completion"]["required"])
         self.assertEqual(enriched["agent_completion"]["task_count"], 0)
+
+    def test_enrich_payload_requires_agent_authored_summary_for_x(self):
+        payload = {
+            "items": [
+                {
+                    "id": "x:1",
+                    "source_type": "x",
+                    "title": "Example",
+                    "summary": "An update",
+                    "content_text": "An update",
+                    "one_liner_zh": "现有一句话。",
+                    "summary_cn": "",
+                }
+            ]
+        }
+        enriched = self.module.enrich_payload(payload)
+        self.assertTrue(enriched["agent_completion"]["required"])
+        task = enriched["agent_completion"]["tasks"][0]
+        self.assertIn("summary_generated_by", task["expected_output_schema"])
+        self.assertIn("human editor", task["agent_summary_prompt"])
 
     def test_cli_enrich_reports_agent_completion_task_count(self):
         payload = {

@@ -62,8 +62,17 @@ def extract_links(text: str) -> List[str]:
     return dedup_keep_order(match.group(0) for match in URL_PAT.finditer(text or ""))
 
 
-def build_summary_prompt(title: str, content_text: str, summary: str) -> str:
+def build_summary_prompt(title: str, content_text: str, summary: str, source_type: str) -> str:
     body = content_text.strip() or summary.strip()
+    source = str(source_type or "rss").strip().lower()
+    source_rules = (
+        "- For X/Twitter: write like a human editor, keep the key actor / product / claim / result, and avoid empty labels such as '分享了一条动态'\n"
+        "- For X/Twitter: `one_liner_zh` should usually be one compact Chinese sentence with concrete information\n"
+        "- For WeChat: `one_liner_zh` should not repeat the title; extract the real takeaway\n"
+        "- For WeChat: `summary_cn` should be 1-2 informative Chinese sentences, not a slogan\n"
+        if source in {"x", "wechat"}
+        else ""
+    )
     return (
         "Read the following RSS item content and produce Chinese fields.\n\n"
         "Required output keys:\n"
@@ -73,6 +82,8 @@ def build_summary_prompt(title: str, content_text: str, summary: str) -> str:
         "- Do not invent facts beyond the content\n"
         "- Keep summary_cn faithful rather than rewriting it into opinionated commentary\n"
         "- Keep one_liner_zh short and direct\n\n"
+        f"{source_rules}"
+        f"Source type: {source}\n\n"
         f"Title: {title}\n\n"
         f"Content: {body}\n"
     )
@@ -133,13 +144,31 @@ def infer_organizations(text: str) -> List[str]:
     return dedup_strings(candidates)[:4]
 
 
+def needs_agent_summary(
+    source_type: str,
+    *,
+    one_liner_zh: str,
+    summary_cn: str,
+    summary_generated_by: str,
+) -> bool:
+    source = str(source_type or "rss").strip().lower()
+    marker = str(summary_generated_by or "").strip().lower()
+    if source == "x":
+        return not (marker == "agent" and one_liner_zh)
+    if source == "wechat":
+        return not (marker == "agent" and one_liner_zh and summary_cn)
+    return not (one_liner_zh and summary_cn)
+
+
 def enrich_item(item: Dict[str, Any]) -> Dict[str, Any]:
     enriched = dict(item)
+    source_type = str(enriched.get("source_type") or "rss").strip().lower()
     title = str(enriched.get("title") or "")
     content_text = str(enriched.get("content_text") or "")
     summary = str(enriched.get("summary") or "")
     one_liner_zh = str(enriched.get("one_liner_zh") or "").strip()
     summary_cn = str(enriched.get("summary_cn") or "").strip()
+    summary_generated_by = str(enriched.get("summary_generated_by") or "").strip()
     links = dedup_keep_order(list(enriched.get("links") or []) + extract_links(content_text) + extract_links(summary))
     related_organizations = normalize_organizations(enriched.get("related_organizations"))
     if not related_organizations:
@@ -152,9 +181,15 @@ def enrich_item(item: Dict[str, Any]) -> Dict[str, Any]:
     enriched["related_organizations"] = related_organizations
     enriched["related_companies"] = related_companies
     enriched["key_people"] = key_people
-    enriched["needs_agent_summary"] = not (one_liner_zh and summary_cn)
+    enriched["summary_generated_by"] = summary_generated_by
+    enriched["needs_agent_summary"] = needs_agent_summary(
+        source_type,
+        one_liner_zh=one_liner_zh,
+        summary_cn=summary_cn,
+        summary_generated_by=summary_generated_by,
+    )
     enriched["needs_related_entities"] = not (related_organizations or key_people)
-    enriched["agent_summary_prompt"] = build_summary_prompt(title, content_text, summary) if enriched["needs_agent_summary"] else ""
+    enriched["agent_summary_prompt"] = build_summary_prompt(title, content_text, summary, source_type) if enriched["needs_agent_summary"] else ""
     enriched["agent_entity_prompt"] = build_entity_prompt(title, content_text, summary) if enriched["needs_related_entities"] else ""
     return enriched
 
@@ -174,6 +209,7 @@ def build_agent_completion(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "id": str(entry.get("id") or ""),
                     "one_liner_zh": "string",
                     "summary_cn": "string",
+                    "summary_generated_by": "agent",
                     "related_organizations": ["string"],
                     "related_companies": ["string"],
                     "key_people": ["string"],

@@ -1586,17 +1586,10 @@ def command_daily(args: argparse.Namespace) -> int:
     stage_log("filter", "results-loaded", results_path=str(paths.filter_results), item_count=len(filter_payload.get("items") or []))
 
     enrich_payload = run_enrich(filter_payload, paths.enrich_results)
-    if args.require_agent_enrich:
+    if not args.auto_workers:
         ensure_agent_completion_done(enrich_payload, paths.enrich_results)
     elif args.auto_workers:
         enrich_payload = auto_complete_enrich_payload(enrich_payload, paths.enrich_results)
-    else:
-        stage_log(
-            "enrich",
-            "agent-completion-deferred",
-            output_path=str(paths.enrich_results),
-            note="Continuing with empty Chinese fields for pipeline testing. Use --require-agent-enrich to enforce completion.",
-        )
 
     build_digest(paths.enrich_results, paths.digest_json)
     remote_publish = not args.auto_workers and has_remote_publish_config(config)

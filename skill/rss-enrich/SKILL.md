@@ -23,6 +23,12 @@ Enrich RSS items into the shared FollowHub contract.
    - the invoking agent reads `agent_completion.tasks`
    - parallelizes them with subagents when several items are missing Chinese fields
    - merges returned `one_liner_zh` and `summary_cn` back into the enrich result
+   - for `x` and `wechat`, production results should be agent-authored rather than RSS-summary-derived or rule-derived
+
+## Production Rule
+
+- For `x` and `wechat`, treat `one_liner_zh` / `summary_cn` as production-ready only when the merged result explicitly carries `summary_generated_by: agent`.
+- Rule-based or feed-derived placeholders are acceptable only in smoke-test paths, not for production publish.
 
 ## Agent Tool Surface
 

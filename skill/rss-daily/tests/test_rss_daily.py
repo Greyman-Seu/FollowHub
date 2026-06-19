@@ -92,11 +92,34 @@ class RssDailySkillTests(unittest.TestCase):
             self.assertEqual(completed["agent_completion"]["task_count"], 0)
             self.assertTrue(completed["entries"][0]["one_liner_zh"])
             self.assertTrue(completed["entries"][0]["summary_cn"])
-            self.assertIn("X 动态", completed["entries"][0]["one_liner_zh"])
+            self.assertIn("机器人", completed["entries"][0]["one_liner_zh"])
+            self.assertTrue(self.module.contains_cjk(completed["entries"][0]["summary_cn"]))
             self.assertEqual(completed["entries"][1]["one_liner_zh"], "机器人操作新进展")
             self.assertEqual(completed["entries"][1]["summary_cn"], "机器人操作新进展摘要")
             saved = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(saved["agent_completion"]["task_count"], 0)
+
+    def test_auto_complete_enrich_payload_rewrites_x_english_fallback(self):
+        payload = {
+            "entries": [
+                {
+                    "id": "x:1",
+                    "source_type": "x",
+                    "title": "Whoah. I did not realize AI had superhuman persuasion already.",
+                    "summary": "Whoah. I did not realize AI had superhuman persuasion already.",
+                    "content_text": "",
+                    "one_liner_zh": "X 动态：Whoah. I did not realize AI had superhuman persuasion already.",
+                    "summary_cn": "原文摘要：Whoah. I did not realize AI had superhuman persuasion already.",
+                }
+            ],
+            "agent_completion": {"required": True, "task_count": 1, "tasks": [{"id": "x:1"}]},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "enrich_results.json"
+            completed = self.module.auto_complete_enrich_payload(payload, out)
+            entry = completed["entries"][0]
+            self.assertEqual(entry["one_liner_zh"], "讨论了 AI 说服能力及其潜在社会影响。")
+            self.assertEqual(entry["summary_cn"], "讨论了 AI 说服能力及其潜在社会影响。")
 
     def test_auto_filter_drops_low_signal_x_promo(self):
         filter_candidates = [

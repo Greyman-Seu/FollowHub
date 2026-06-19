@@ -439,6 +439,59 @@ class FollowPublishSkillTests(unittest.TestCase):
             "2026-06-18 Follow daily selected 3 WeChat item(s) and 47 X / Twitter item(s).",
         )
 
+    def test_build_digest_highlights_use_x_one_liner(self):
+        sections = [
+            {
+                "source_type": "x",
+                "title": "X / Twitter",
+                "items": [
+                    {
+                        "id": "x:1",
+                        "title": "Original English title",
+                        "summary": "原始摘要",
+                        "one_liner_zh": "讨论了 AI 说服能力及其潜在社会影响。",
+                        "url": "https://nitter.net/sama/status/1#m",
+                        "importance": "high",
+                        "overall_score": 3.0,
+                    }
+                ],
+            }
+        ]
+        highlights = self.module.build_digest_highlights_from_sections(sections)
+        self.assertEqual(highlights, ["@sama · 讨论了 AI 说服能力及其潜在社会影响。"])
+
+    def test_sanitize_digests_for_publication_slims_x_items_to_one_line(self):
+        digest = {
+            "date": "2026-06-18",
+            "summary": "Digest.",
+            "highlights": [],
+            "counts": {"arxiv": 0, "wechat": 0, "x": 1, "bilibili": 0},
+            "sections": [
+                {
+                    "source_type": "x",
+                    "title": "X / Twitter",
+                    "items": [
+                        {
+                            "id": "x:1",
+                            "title": "Original English title",
+                            "summary": "原始摘要",
+                            "one_liner_zh": "发布了一项新功能或产品更新。",
+                            "summary_cn": "原文摘要：long english text",
+                            "url": "https://nitter.net/gdb/status/1#m",
+                            "importance": "medium",
+                            "domains": [{"slug": "agent", "name": "Agent"}],
+                            "links": [{"label": "Original", "href": "https://nitter.net/gdb/status/1#m"}],
+                        }
+                    ],
+                }
+            ],
+        }
+        sanitized = self.module.sanitize_digests_for_publication([digest])
+        item = sanitized[0]["sections"][0]["items"][0]
+        self.assertEqual(item["summary"], "发布了一项新功能或产品更新。")
+        self.assertEqual(item["summary_cn"], "")
+        self.assertEqual(item["abstract_en"], "")
+
     def test_build_package_can_sync_page_data_dir(self):
         digest = self.module.validate_digest(
             {

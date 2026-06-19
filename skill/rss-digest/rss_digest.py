@@ -60,6 +60,13 @@ def build_digest(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
             if item_source_name and item_source_name not in source_names:
                 source_names.append(item_source_name)
         source_type = str(representative.get("source_type") or "rss")
+        one_liner_zh = str(representative.get("one_liner_zh") or "").strip()
+        summary_cn = str(representative.get("summary_cn") or "").strip()
+        if source_type == "x":
+            if not one_liner_zh:
+                one_liner_zh = summary_cn or str(representative.get("title") or "").strip()
+            summary_cn = ""
+        summary_value = one_liner_zh or summary_cn or str(representative.get("title") or "")
         story_items.append(
             {
                 "id": str(representative.get("id") or ""),
@@ -69,9 +76,9 @@ def build_digest(entries: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "source_type": source_type,
                 "source_name": source_name,
                 "title": str(representative.get("title") or ""),
-                "summary": str(representative.get("one_liner_zh") or representative.get("title") or ""),
-                "one_liner_zh": str(representative.get("one_liner_zh") or ""),
-                "summary_cn": str(representative.get("summary_cn") or ""),
+                "summary": summary_value,
+                "one_liner_zh": one_liner_zh,
+                "summary_cn": summary_cn,
                 "domains": list(representative.get("domains") or []),
                 "related_organizations": list(representative.get("related_organizations") or []),
                 "related_companies": list(representative.get("related_companies") or []),

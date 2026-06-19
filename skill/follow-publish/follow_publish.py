@@ -6,6 +6,7 @@ follow_publish.py - Build Follow page data artifacts from follow digests or arXi
 import argparse
 import importlib.util
 import json
+import re
 import subprocess
 import shutil
 import sys
@@ -81,6 +82,9 @@ def normalize_source_name(source: str) -> str:
         "bilibili": "Bilibili",
     }
     return mapping.get(source, source)
+
+
+X_HANDLE_PAT = re.compile(r"(?:nitter\.net|x\.com|twitter\.com)/([^/?#]+)", re.IGNORECASE)
 
 
 def as_string_list(value: Any) -> List[str]:
@@ -382,6 +386,55 @@ def _is_meaningful_chinese(text: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
+def extract_x_handle(item: Dict[str, Any]) -> str:
+    links = list(item.get("links") or [])
+    href = ""
+    for link in links:
+        label = str(link.get("label") or "").strip().lower()
+        candidate = str(link.get("href") or "").strip()
+        if label in {"original", "thread"} and candidate:
+            href = candidate
+            break
+    if not href:
+        href = str(item.get("url") or "").strip()
+    match = X_HANDLE_PAT.search(href)
+    return match.group(1).replace("@", "").strip() if match else ""
+
+
+def resolve_item_source_type(item: Dict[str, Any]) -> str:
+    declared = str(item.get("source_type") or "").strip().lower()
+    if declared:
+        return declared
+    item_id = str(item.get("id") or "").strip().lower()
+    if ":" in item_id:
+        return item_id.split(":", 1)[0]
+    if extract_x_handle(item):
+        return "x"
+    return ""
+
+
+def build_public_item_summary(item: Dict[str, Any]) -> str:
+    source_type = resolve_item_source_type(item)
+    if source_type == "x":
+        for key in ("one_liner_zh", "summary_cn", "summary", "title"):
+            value = str(item.get(key) or "").strip()
+            if value:
+                return value
+        return "分享了一条值得关注的动态。"
+    return str(item.get("summary") or item.get("one_liner_zh") or item.get("title") or "").strip()
+
+
+def build_highlight_text(item: Dict[str, Any]) -> str:
+    source_type = resolve_item_source_type(item)
+    summary = build_public_item_summary(item)
+    if source_type == "x":
+        handle = extract_x_handle(item)
+        prefix = f"@{handle} · " if handle else ""
+        return f"{prefix}{summary}"
+    title = str(item.get("title") or "").strip()
+    return f"{title}: {summary}" if title else summary
+
+
 def build_digest_highlights_from_sections(sections: Sequence[Dict[str, Any]]) -> List[str]:
     highlighted = []
     seen_ids = set()
@@ -421,7 +474,7 @@ def build_digest_highlights_from_sections(sections: Sequence[Dict[str, Any]]) ->
         if item_id:
             seen_ids.add(item_id)
 
-    return [f"{item['title']}: {item['summary']}" for item in highlighted[:3]]
+    return [build_highlight_text(item) for item in highlighted[:3]]
 
 
 def build_digest_summary(date_value: str, sections: Sequence[Dict[str, Any]], counts: Dict[str, int], original_summary: str) -> str:
@@ -476,6 +529,10 @@ def sanitize_digests_for_publication(digests: Sequence[Dict[str, Any]]) -> List[
                 if best_rank_by_id.get(item_id) != item_rank:
                     continue
                 candidate = deepcopy(item_with_date)
+                if str(candidate.get("source_type") or "").strip().lower() == "x":
+                    candidate["summary"] = build_public_item_summary(candidate)
+                    candidate["summary_cn"] = ""
+                    candidate["abstract_en"] = ""
                 published_items.append(candidate)
             published_sections.append(
                 {

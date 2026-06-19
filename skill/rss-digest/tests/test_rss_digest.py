@@ -114,6 +114,34 @@ class RssDigestTests(unittest.TestCase):
         self.assertEqual(digest["counts"]["rss"], 1)
         self.assertEqual(len(digest["stories"]), 1)
 
+    def test_build_digest_keeps_only_one_cn_summary_for_x(self):
+        digest = rss_digest.build_digest(
+            [
+                {
+                    "id": "x:1",
+                    "story_id": "story:x:1",
+                    "story_status": "new",
+                    "source_type": "x",
+                    "source_name": "x-sama",
+                    "title": "Whoah. I did not realize AI had superhuman persuasion already.",
+                    "one_liner_zh": "讨论了 AI 说服能力及其潜在社会影响。",
+                    "summary_cn": "讨论了 AI 说服能力及其潜在社会影响。",
+                    "url": "https://nitter.net/sama/status/1#m",
+                    "published_at": "2026-06-18T08:00:00Z",
+                    "canonical_id": "x:1",
+                    "duplicate_count": 0,
+                    "duplicate_items": [],
+                    "domains": [],
+                    "include_in_digest": True,
+                }
+            ]
+        )
+
+        story = digest["stories"][0]
+        self.assertEqual(story["summary"], "讨论了 AI 说服能力及其潜在社会影响。")
+        self.assertEqual(story["one_liner_zh"], "讨论了 AI 说服能力及其潜在社会影响。")
+        self.assertEqual(story["summary_cn"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,6 +94,20 @@ There are two legitimate operating modes:
 
 The invoking agent must distinguish these modes clearly when reporting success.
 
+## X / Twitter Daily Path
+
+For `x` items, the daily contract is stricter than WeChat:
+
+- treat each post as its own candidate item; do not merge multiple same-day posts from the same account into one digest row
+- use RSS as the acquisition layer only
+- perform story grouping before filtering so retweets / repeats / quoted chains can be evaluated as clusters
+- use agent or CLI worker stages for `prefilter` / `filter`; do not publish raw tweet text directly from collect/fetch
+- final page-facing output should keep only:
+  - account identity
+  - original X link
+  - one concise Chinese `one_liner_zh`
+- do not expose long raw tweet text, English fallback snippets, or separate translation cards on the X source page unless the user explicitly asks for a verbose mode
+
 ## Daily Procedure
 
 1. Resolve config:

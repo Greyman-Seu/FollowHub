@@ -374,6 +374,79 @@ def contains_cjk(value: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in text)
 
 
+def count_cjk_chars(value: str) -> int:
+    return sum(1 for char in str(value or "") if "\u4e00" <= char <= "\u9fff")
+
+
+def strip_auto_cn_prefix(value: str) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"^X\s*动态[:：]\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"^原文摘要[:：]\s*", "", text)
+    return text.strip()
+
+
+def first_sentence(value: str) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if not text:
+        return ""
+    parts = re.split(r"(?<=[。！？!?])\s+", text, maxsplit=1)
+    return parts[0].strip() if parts else text
+
+
+def needs_x_auto_refresh(value: str, *, one_liner: bool) -> bool:
+    text = str(value or "").strip()
+    if not text:
+        return True
+    payload = strip_auto_cn_prefix(text)
+    if not payload:
+        return True
+    if count_cjk_chars(payload) >= (6 if one_liner else 10):
+        return False
+    if one_liner and re.match(r"^X\s*动态[:：]", text, flags=re.IGNORECASE):
+        return True
+    if not one_liner and text.startswith("原文摘要："):
+        return True
+    return False
+
+
+def infer_x_one_liner_zh(entry: Dict[str, Any]) -> str:
+    title = strip_summary_markup(str(entry.get("title") or ""))
+    summary = strip_summary_markup(str(entry.get("summary") or ""))
+    content = strip_summary_markup(str(entry.get("content_text") or ""))
+    title = RT_PREFIX_PAT.sub("", title)
+    combined = " ".join(part for part in (title, summary, content) if part)
+    lowered = normalize_text(combined)
+    is_retweet = bool(re.match(r"^rt\b", normalize_text(str(entry.get("title") or ""))))
+
+    if contains_cjk(title):
+        return truncate_text(first_sentence(title), 42)
+    if contains_cjk(summary):
+        return truncate_text(first_sentence(summary), 50)
+    if "persuasion" in lowered or "persuade" in lowered:
+        return "讨论了 AI 说服能力及其潜在社会影响。"
+    if any(token in lowered for token in ("spend control", "credit usage", "admin console", "enterprise")):
+        return "发布了企业额度分析与管理员支出控制相关更新。"
+    if any(token in lowered for token in ("jailbreak", "security", "safety", "blocked request")):
+        return "讨论了模型越狱与安全限制相关动态。"
+    if any(token in lowered for token in ("open weights", "open source", "open model", "open models")):
+        return "讨论了开源模型与开放生态的最新进展。"
+    if any(token in lowered for token in ("benchmark", "evaluation", "leaderboard", "eval")):
+        return "分享了一个评测结果或 benchmark 观察。"
+    if any(token in lowered for token in ("robot", "robotics", "vla", "manipulation", "embodied")):
+        return "分享了机器人或具身智能相关进展。"
+    if any(token in lowered for token in ("video", "demo", "scanner", "visualizer", "livestream")):
+        return "分享了一段演示或产品展示。"
+    if any(token in lowered for token in ("launch", "launched", "release", "released", "rolling out", "available", "update", "updated")):
+        return "发布了一项新功能或产品更新。"
+    if any(token in lowered for token in ("paper", "research", "study", "arxiv")):
+        return "分享了一项研究进展。"
+    if any(token in lowered for token in ("model", "llm", "ai", "agent", "workflow")):
+        return "分享了一条 AI 相关动态。"
+    if is_retweet:
+        return "转发并评论了一条值得关注的动态。"
+    return "分享了一条值得查看的动态。"
+
+
 def combined_entry_text(entry: Dict[str, Any]) -> str:
     return normalize_text(
         " ".join(
@@ -1162,14 +1235,16 @@ def auto_filter(
 
 def _auto_one_liner_zh(entry: Dict[str, Any]) -> str:
     existing = str(entry.get("one_liner_zh") or "").strip()
-    if existing:
+    source_type = str(entry.get("source_type") or "rss").strip().lower()
+    if existing and not (source_type == "x" and needs_x_auto_refresh(existing, one_liner=True)):
         return existing
     title = strip_summary_markup(str(entry.get("title") or ""))
     title = RT_PREFIX_PAT.sub("", title)
     title = " ".join(title.split()).strip()
+    if source_type == "x":
+        return infer_x_one_liner_zh(entry)
     if not title:
         return ""
-    source_type = str(entry.get("source_type") or "rss").strip().lower()
     if contains_cjk(title):
         return truncate_text(title, 60)
     prefix_map = {
@@ -1185,7 +1260,8 @@ def _auto_one_liner_zh(entry: Dict[str, Any]) -> str:
 
 def _auto_summary_cn(entry: Dict[str, Any]) -> str:
     existing = str(entry.get("summary_cn") or "").strip()
-    if existing:
+    source_type = str(entry.get("source_type") or "rss").strip().lower()
+    if existing and not (source_type == "x" and needs_x_auto_refresh(existing, one_liner=False)):
         return existing
     summary = strip_summary_markup(str(entry.get("summary") or ""))
     content = strip_summary_markup(str(entry.get("content_text") or ""))
@@ -1194,6 +1270,9 @@ def _auto_summary_cn(entry: Dict[str, Any]) -> str:
     body = summary or content or title
     if not body:
         return ""
+    if source_type == "x":
+        line = infer_x_one_liner_zh(entry)
+        return line if line else "分享了一条值得关注的动态。"
     if contains_cjk(body):
         return truncate_text(body, 180)
     return truncate_text(f"原文摘要：{body}", 220)

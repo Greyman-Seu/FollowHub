@@ -641,7 +641,7 @@ class FollowPublishSkillTests(unittest.TestCase):
             self.assertEqual(payload["latest_date"], "2026-05-03")
             self.assertTrue((Path(out_dir) / "manifest.json").exists())
 
-    def test_publish_daily_command_merges_remote_daily_and_uploads(self):
+    def test_publish_daily_command_replaces_same_day_remote_daily_and_uploads(self):
         digest = self.module.validate_digest(
             {
                 "date": "2026-05-02",
@@ -729,8 +729,8 @@ class FollowPublishSkillTests(unittest.TestCase):
             merged_daily = json.loads((Path(tmpdir) / "out" / "daily" / "2026-05-02.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["merged_date"], "2026-05-02")
             self.assertIn("follow/manifest.json", payload["uploaded"])
-            self.assertEqual(len(merged_daily["sections"]), 2)
-            self.assertEqual(merged_daily["counts"]["arxiv"], 1)
+            self.assertEqual(len(merged_daily["sections"]), 1)
+            self.assertEqual(merged_daily["counts"]["arxiv"], 0)
             self.assertEqual(merged_daily["counts"]["wechat"], 1)
 
     def test_publish_daily_command_normal_mode_uploads_only_incoming_daily(self):

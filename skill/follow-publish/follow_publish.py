@@ -878,8 +878,7 @@ def publish_daily_command(
     rcli_module = load_rcli_module()
     config_path = rcli_module.resolve_config_path(None)
 
-    existing_daily = fetch_remote_json(rcli_module, remote_prefix, f"daily/{incoming['date']}.json")
-    merged_daily = merge_digests(existing_daily, incoming)
+    merged_daily = validate_digest(incoming)
 
     remote_manifest = fetch_remote_json(rcli_module, remote_prefix, "manifest.json") or {}
     remote_days = [item.get("date") for item in remote_manifest.get("days", []) if item.get("date")]

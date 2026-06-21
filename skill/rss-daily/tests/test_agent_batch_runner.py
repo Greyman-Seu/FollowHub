@@ -89,8 +89,8 @@ class AgentBatchRunnerTests(unittest.TestCase):
         payload = {
             "mode": "rss-filter",
             "entries": [
-                {"id": "x:1", "title": "A"},
-                {"id": "x:2", "title": "B"},
+                {"id": "x:1", "title": "A", "source_type": "x", "summary": "sum a", "content_text": "content a", "url": "https://x.com/a"},
+                {"id": "x:2", "title": "B", "source_type": "x", "summary": "sum b", "content_text": "content b", "url": "https://x.com/b"},
             ],
         }
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -139,6 +139,10 @@ class AgentBatchRunnerTests(unittest.TestCase):
             self.assertEqual(len(merged["items"]), 2)
             self.assertTrue(merged["items"][0]["include_in_digest"])
             self.assertEqual(merged["items"][0]["one_liner_zh"], "一句话")
+            self.assertEqual(merged["items"][0]["source_type"], "x")
+            self.assertEqual(merged["items"][0]["title"], "A")
+            self.assertEqual(merged["items"][0]["content_text"], "content a")
+            self.assertEqual(merged["items"][0]["summary_generated_by"], "agent")
 
     def test_plan_and_merge_enrich_results(self):
         payload = {

@@ -203,6 +203,10 @@ def merge_prefilter_results(*, input_path: Path, batch_dir: Path, output_path: P
 def merge_filter_results(*, input_path: Path, batch_dir: Path, output_path: Path) -> Dict[str, Any]:
     source = load_json(input_path)
     manifest = load_manifest(batch_dir)
+    source_by_id = {
+        str(item.get("id") or ""): dict(item)
+        for item in (source.get("entries") or [])
+    }
     allowed_ids = {
         str(item.get("id") or "")
         for item in (source.get("entries") or [])
@@ -224,16 +228,15 @@ def merge_filter_results(*, input_path: Path, batch_dir: Path, output_path: Path
             if item_id in seen:
                 fail(f"Duplicate filter result for id: {item_id}")
             seen.add(item_id)
-            merged_items.append(
-                {
-                    "id": item_id,
-                    "include_in_digest": bool(item.get("include_in_digest", False)),
-                    "domains": list(item.get("domains") or []),
-                    "one_liner_zh": str(item.get("one_liner_zh") or "").strip(),
-                    "summary_cn": str(item.get("summary_cn") or "").strip(),
-                    "reason": str(item.get("reason") or "").strip(),
-                }
-            )
+            merged = source_by_id.get(item_id, {"id": item_id})
+            merged["include_in_digest"] = bool(item.get("include_in_digest", False))
+            merged["domains"] = list(item.get("domains") or [])
+            merged["one_liner_zh"] = str(item.get("one_liner_zh") or "").strip()
+            merged["summary_cn"] = str(item.get("summary_cn") or "").strip()
+            merged["reason"] = str(item.get("reason") or "").strip()
+            if merged["one_liner_zh"] or merged["summary_cn"]:
+                merged["summary_generated_by"] = "agent"
+            merged_items.append(merged)
     missing = sorted(allowed_ids - seen)
     if missing:
         fail(f"Missing filter decisions for {len(missing)} items.")

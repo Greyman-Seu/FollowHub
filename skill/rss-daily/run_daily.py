@@ -1521,7 +1521,8 @@ def ensure_agent_completion_done(enrich_payload: Dict[str, Any], enrich_results_
         fail(
             "rss-enrich reported pending agent completion tasks. "
             f"Complete them and merge one_liner_zh/summary_cn/related_organizations/related_companies/key_people into {enrich_results_path} before rerunning digest/publish. "
-            f"Pending tasks: {len(tasks)}"
+            f"Pending tasks: {len(tasks)}. "
+            f"Suggested flow: python3 skill/rss-daily/agent_batch_runner.py plan-enrich --input {enrich_results_path} --output-dir {enrich_results_path.parent / 'agent-batches' / 'enrich'}"
         )
 
 
@@ -1565,6 +1566,7 @@ def command_daily(args: argparse.Namespace) -> int:
             fail(
                 "prefilter_results.json is missing. "
                 f"Use {paths.prefilter_input} with the rss-prefilter skill, write results to {paths.prefilter_results}, then rerun. "
+                f"Suggested batching helper: python3 skill/rss-daily/agent_batch_runner.py plan-prefilter --input {paths.prefilter_input} --output-dir {run_root / 'agent-batches' / 'prefilter'}. "
                 "Or pass --auto-workers for testing."
             )
     prefilter_payload = validate_prefilter_results(paths.prefilter_results, clustered_payload)
@@ -1580,6 +1582,7 @@ def command_daily(args: argparse.Namespace) -> int:
             fail(
                 "filter_results.json is missing. "
                 f"Use {paths.filter_input} with the rss-filter skill, write results to {paths.filter_results}, then rerun. "
+                f"Suggested batching helper: python3 skill/rss-daily/agent_batch_runner.py plan-filter --input {paths.filter_input} --output-dir {run_root / 'agent-batches' / 'filter'}. "
                 "Or pass --auto-workers for testing."
             )
     filter_payload = validate_filter_results(paths.filter_results, [str(entry.get("id") or "") for entry in filter_candidates])

@@ -162,6 +162,20 @@ Recommended defaults:
 - run `rss-enrich` only on already-selected items
 - only use `--auto-workers` for smoke tests, fixture generation, or debugging
 
+The repository now provides an official artifact-level batching helper:
+
+```bash
+python3 skill/rss-daily/agent_batch_runner.py plan-prefilter --input rss-daily-output/<date>/prefilter_input.json --output-dir rss-daily-output/<date>/agent-batches/prefilter
+python3 skill/rss-daily/agent_batch_runner.py merge-prefilter --input rss-daily-output/<date>/prefilter_input.json --batch-dir rss-daily-output/<date>/agent-batches/prefilter --output rss-daily-output/<date>/prefilter_results.json
+python3 skill/rss-daily/agent_batch_runner.py plan-filter --input rss-daily-output/<date>/filter_input.json --output-dir rss-daily-output/<date>/agent-batches/filter
+python3 skill/rss-daily/agent_batch_runner.py merge-filter --input rss-daily-output/<date>/filter_input.json --batch-dir rss-daily-output/<date>/agent-batches/filter --output rss-daily-output/<date>/filter_results.json
+python3 skill/rss-daily/agent_batch_runner.py plan-enrich --input rss-daily-output/<date>/enrich_results.json --output-dir rss-daily-output/<date>/agent-batches/enrich
+python3 skill/rss-daily/agent_batch_runner.py merge-enrich --input rss-daily-output/<date>/enrich_results.json --batch-dir rss-daily-output/<date>/agent-batches/enrich --output rss-daily-output/<date>/enrich_results.json
+python3 skill/rss-daily/agent_batch_runner.py status --batch-dir rss-daily-output/<date>/agent-batches/enrich
+```
+
+Use this helper instead of ad-hoc one-off scripts when the invoking agent wants to fan out subagent work.
+
 The contract is stage order and artifacts, not a specific concurrency model.
 
 ## Publish Rules

@@ -25,6 +25,13 @@ Enrich RSS items into the shared FollowHub contract.
    - merges returned `one_liner_zh` and `summary_cn` back into the enrich result
    - for `x` and `wechat`, production results should be agent-authored rather than RSS-summary-derived or rule-derived
 
+The repository-level helper for batching these tasks is:
+
+```bash
+python3 skill/rss-daily/agent_batch_runner.py plan-enrich --input rss-daily-output/<date>/enrich_results.json --output-dir rss-daily-output/<date>/agent-batches/enrich
+python3 skill/rss-daily/agent_batch_runner.py merge-enrich --input rss-daily-output/<date>/enrich_results.json --batch-dir rss-daily-output/<date>/agent-batches/enrich --output rss-daily-output/<date>/enrich_results.json
+```
+
 ## Production Rule
 
 - For `x` and `wechat`, treat `one_liner_zh` / `summary_cn` as production-ready only when the merged result explicitly carries `summary_generated_by: agent`.

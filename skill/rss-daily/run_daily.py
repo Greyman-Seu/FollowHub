@@ -410,18 +410,37 @@ def split_title_parts(title: str) -> tuple[str, str]:
     return text, ""
 
 
+LOW_INFORMATION_X_SUMMARY_PHRASES = (
+    "分享了一条值得查看的动态",
+    "转发并评论了一条值得关注的动态",
+    "分享了一段演示或产品展示",
+    "分享了一项研究进展",
+    "分享了一条 AI 相关动态",
+    "发布了一项新功能或产品更新",
+)
+
+
+def is_low_information_x_summary(value: str) -> bool:
+    text = str(value or "").strip().rstrip("。.!！")
+    if not text:
+        return True
+    return any(text == phrase.rstrip("。") for phrase in LOW_INFORMATION_X_SUMMARY_PHRASES)
+
+
 def needs_x_auto_refresh(value: str, *, one_liner: bool) -> bool:
     text = str(value or "").strip()
     if not text:
         return True
+    if is_low_information_x_summary(text):
+        return True
     payload = strip_auto_cn_prefix(text)
     if not payload:
         return True
-    if count_cjk_chars(payload) >= (6 if one_liner else 10):
-        return False
     if one_liner and re.match(r"^X\s*动态[:：]", text, flags=re.IGNORECASE):
         return True
     if not one_liner and text.startswith("原文摘要："):
+        return True
+    if count_cjk_chars(payload) < (12 if one_liner else 20):
         return True
     return False
 
@@ -474,16 +493,16 @@ def infer_x_one_liner_zh(entry: Dict[str, Any]) -> str:
     if any(token in lowered for token in ("robot", "robotics", "vla", "manipulation", "embodied")):
         return "分享了机器人或具身智能相关进展。"
     if any(token in lowered for token in ("video", "demo", "scanner", "visualizer", "livestream")):
-        return "分享了一段演示或产品展示。"
+        return "演示了一个视频、可视化或实时交互相关产品/能力；需要补全具体名称和结论。"
     if any(token in lowered for token in ("launch", "launched", "release", "released", "rolling out", "available", "update", "updated")):
-        return "发布了一项新功能或产品更新。"
+        return "发布了产品或功能更新；需要补全具体产品名、能力变化和影响。"
     if any(token in lowered for token in ("paper", "research", "study", "arxiv")):
-        return "分享了一项研究进展。"
+        return "提到一项研究进展；需要补全研究对象、核心结论和为什么重要。"
     if any(token in lowered for token in ("model", "llm", "ai", "agent", "workflow")):
-        return "分享了一条 AI 相关动态。"
+        return "提到 AI/模型/Agent 相关动态；需要补全具体对象、观点或能力变化。"
     if is_retweet:
-        return "转发并评论了一条值得关注的动态。"
-    return "分享了一条值得查看的动态。"
+        return "转发评论了一条 X 动态；需要补全被转发内容的具体事实和观点。"
+    return "X 动态信息不足；需要补全具体事实、对象或观点。"
 
 
 def infer_wechat_one_liner_zh(entry: Dict[str, Any]) -> str:

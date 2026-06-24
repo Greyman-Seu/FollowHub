@@ -108,6 +108,30 @@ For `x` items, the daily contract is stricter than WeChat:
   - one concise Chinese `one_liner_zh`
 - do not expose long raw tweet text, English fallback snippets, or separate translation cards on the X source page unless the user explicitly asks for a verbose mode
 
+
+## X / Twitter Summary Quality Gate
+
+For X/Twitter items, low-information summaries are production blockers. Do not publish generic lines such as:
+
+- “分享了一条值得查看的动态”
+- “转发并评论了一条值得关注的动态”
+- “分享了一段演示或产品展示”
+- “分享了一项研究进展”
+- “发布了一项新功能或产品更新”
+
+A production `one_liner_zh` must extract concrete information from the post or quoted/reposted item, preferably including at least one of:
+
+- product / model / paper / project name
+- concrete claim, capability, benchmark, result, or release detail
+- the author’s specific viewpoint or why the item matters
+
+Good examples:
+
+- “MaineCoon 被称为首个不限时长的交互式音视频模型，展示了快速生成视频并走向实时视频聊天界面的可能性。”
+- “Jeff Clune 转述研究称前沿 AI 在对话说服力上已超过专家人类，包括世界冠军辩手和职业游说者。”
+
+If the pipeline cannot extract a concrete fact, the item must be sent to agent completion or dropped from production digest; do not fill it with a generic placeholder.
+
 ## Daily Procedure
 
 1. Resolve config:

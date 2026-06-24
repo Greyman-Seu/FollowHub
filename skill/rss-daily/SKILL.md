@@ -111,7 +111,9 @@ For `x` items, the daily contract is stricter than WeChat:
 
 ## X / Twitter Summary Quality Gate
 
-For X/Twitter items, low-information summaries are production blockers. Do not publish generic lines such as:
+For X/Twitter items, low-information summaries are production blockers. X should be filtered more aggressively than WeChat: if a post does not contain a concrete technical/trend signal, drop it instead of trying to summarize it.
+
+Do not publish generic lines such as:
 
 - “分享了一条值得查看的动态”
 - “转发并评论了一条值得关注的动态”
@@ -122,15 +124,25 @@ For X/Twitter items, low-information summaries are production blockers. Do not p
 A production `one_liner_zh` must extract concrete information from the post or quoted/reposted item, preferably including at least one of:
 
 - product / model / paper / project name
-- concrete claim, capability, benchmark, result, or release detail
+- concrete claim, capability, benchmark, result, release detail, pricing/cost/latency/throughput detail
 - the author’s specific viewpoint or why the item matters
+
+Drop instead of publish when an X item is only:
+
+- conference attendance, opening ceremony, panel discussion, workshop, or institutional activity recap
+- “shared our vision / mission / commitment” style public-relations language
+- broad “AI, trust, society, responsible AI” statements without a technical or trend claim
+- recruitment, course, event registration, sponsorship, or generic promotion
+- social congratulations, photo/video-only posts, or “we were honored to join…” posts
+
+Example that should be dropped: an institutional account says its CEO attended a panel about “AI era: technology, truth and trust” and restates a mission to build trustworthy AI, but gives no concrete product, model, research result, benchmark, policy detail, or trend argument.
 
 Good examples:
 
 - “MaineCoon 被称为首个不限时长的交互式音视频模型，展示了快速生成视频并走向实时视频聊天界面的可能性。”
 - “Jeff Clune 转述研究称前沿 AI 在对话说服力上已超过专家人类，包括世界冠军辩手和职业游说者。”
 
-If the pipeline cannot extract a concrete fact, the item must be sent to agent completion or dropped from production digest; do not fill it with a generic placeholder.
+If the pipeline cannot extract a concrete fact, the item must be sent to agent completion or dropped from production digest; do not fill it with a generic placeholder. For X specifically, prefer dropping over completion when the underlying post is just institutional activity/context with no technical or trend substance.
 
 ## Daily Procedure
 

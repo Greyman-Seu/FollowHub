@@ -47,6 +47,8 @@ Review rule of thumb:
 - recent `repeat` usually means `drop`
 - recent `followup` is usually `keep` or `uncertain`, not automatic `drop`
 - if the same source keeps repeating the same story without new substance, bias toward `drop`
+- for `source_type: "x"`, bias much more aggressively toward `drop`: keep only posts with a concrete model/product/paper/dataset/benchmark/release, a specific technical capability/result, or a non-obvious trend/market/risk viewpoint
+- drop X institutional activity logs, conference attendance notes, opening-ceremony/panel recaps, recruitment/course/promotion, and public-value/vision statements when they only say “AI/trust/society” without a concrete technical or trend claim
 
 ## Output
 

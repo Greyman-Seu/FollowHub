@@ -325,6 +325,122 @@ X_PROMO_HINTS = {
     "闭门交流",
 }
 
+X_LOW_SIGNAL_CONTEXT_HINTS = {
+    "opening ceremony",
+    "grand opening",
+    "attended",
+    "participated",
+    "joined",
+    "panel discussion",
+    "fireside chat",
+    "keynote",
+    "conference",
+    "summit",
+    "forum",
+    "workshop",
+    "gathering place",
+    "thought leaders",
+    "shared her perspective",
+    "shared his perspective",
+    "shared their perspective",
+    "shared our vision",
+    "vision for",
+    "commitment to",
+    "mission to",
+    "proud to",
+    "honored to",
+    "trustworthy ai",
+    "ai for good",
+    "serves society",
+    "社会",
+    "愿景",
+    "承诺",
+    "使命",
+    "开幕",
+    "出席",
+    "参与",
+    "圆桌",
+    "小组讨论",
+    "论坛",
+    "峰会",
+    "大会",
+    "思想领袖",
+    "值得信赖的人工智能",
+}
+
+X_CONCRETE_SIGNAL_HINTS = {
+    "paper",
+    "arxiv",
+    "dataset",
+    "benchmark",
+    "leaderboard",
+    "eval",
+    "evaluation",
+    "github",
+    "repo",
+    "open source",
+    "open-source",
+    "open weights",
+    "weights",
+    "released",
+    "launches",
+    "launched",
+    "rolling out",
+    "api",
+    "sdk",
+    "pricing",
+    "latency",
+    "throughput",
+    "context window",
+    "tokens/s",
+    "sota",
+    "state-of-the-art",
+    "beats",
+    "outperforms",
+    "accuracy",
+    "训练",
+    "推理",
+    "评测",
+    "基准",
+    "数据集",
+    "论文",
+    "开源",
+    "权重",
+    "发布",
+    "上线",
+    "能力",
+    "性能",
+    "成本",
+}
+
+X_VIEWPOINT_SIGNAL_HINTS = {
+    "argues",
+    "claims",
+    "predicts",
+    "warns",
+    "explains why",
+    "breakdown",
+    "analysis",
+    "trend",
+    "adoption",
+    "moat",
+    "market",
+    "risk",
+    "because",
+    "therefore",
+    "认为",
+    "指出",
+    "预测",
+    "警告",
+    "解释",
+    "趋势",
+    "风险",
+    "市场",
+    "采用",
+    "因为",
+    "因此",
+}
+
 FOLLOWUP_HINTS = {
     "recap",
     "update",
@@ -417,6 +533,11 @@ LOW_INFORMATION_X_SUMMARY_PHRASES = (
     "分享了一项研究进展",
     "分享了一条 AI 相关动态",
     "发布了一项新功能或产品更新",
+    "提到 AI/模型/Agent 相关动态；需要补全具体对象、观点或能力变化",
+    "X 动态信息不足；需要补全具体事实、对象或观点",
+    "分享了一场 AI 相关活动或机构动态",
+    "报道了一场 AI 相关活动",
+    "介绍了机构愿景或公共倡议",
 )
 
 
@@ -571,11 +692,19 @@ def cleaned_entry_body(entry: Dict[str, Any]) -> str:
     return " ".join(part for part in parts if part).strip()
 
 
+def text_has_hint(text: str, hint: str) -> bool:
+    needle = normalize_text(hint)
+    if not needle:
+        return False
+    if re.fullmatch(r"[a-z0-9_.+-]+", needle):
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(needle)}(?![a-z0-9])", text))
+    return needle in text
+
+
 def token_match_count(text: str, tokens: List[str]) -> int:
     count = 0
     for token in tokens:
-        value = normalize_text(token)
-        if value and value in text:
+        if text_has_hint(text, str(token)):
             count += 1
     return count
 
@@ -583,12 +712,36 @@ def token_match_count(text: str, tokens: List[str]) -> int:
 def looks_like_ad(text: str, exclude_keywords: List[str]) -> bool:
     if token_match_count(text, exclude_keywords) > 0:
         return True
-    return any(hint in text for hint in AD_HINTS)
+    return any(text_has_hint(text, hint) for hint in AD_HINTS)
 
 
 def has_technical_signal(text: str) -> bool:
     lowered = normalize_text(text)
-    return any(hint in lowered for hint in TECH_SIGNAL_HINTS)
+    return any(text_has_hint(lowered, hint) for hint in TECH_SIGNAL_HINTS)
+
+
+def has_x_concrete_digest_signal(text: str) -> bool:
+    lowered = normalize_text(text)
+    if any(text_has_hint(lowered, hint) for hint in X_CONCRETE_SIGNAL_HINTS):
+        return True
+    if any(text_has_hint(lowered, hint) for hint in X_VIEWPOINT_SIGNAL_HINTS):
+        return True
+    if re.search(r"\b(?:gpt|claude|gemini|llama|qwen|deepseek|mistral|kimi|grok|sora|veo|imagen)[-\w.]*\b", lowered):
+        return True
+    if re.search(r"\b\d+(?:\.\d+)?\s*(?:%|x|b|m|k|tokens?|tok/s|fps|ms|gb|tb|params?|parameters?)\b", lowered):
+        return True
+    if re.search(r"\b(?:\d+b|\d+m|\d+k)\b", lowered):
+        return True
+    return False
+
+
+def looks_like_x_context_only_item(text: str) -> bool:
+    lowered = normalize_text(text)
+    if not lowered:
+        return True
+    if not any(text_has_hint(lowered, hint) for hint in X_LOW_SIGNAL_CONTEXT_HINTS):
+        return False
+    return not has_x_concrete_digest_signal(text)
 
 
 def looks_like_x_promo_or_noise(entry: Dict[str, Any], text: str) -> bool:
@@ -597,7 +750,9 @@ def looks_like_x_promo_or_noise(entry: Dict[str, Any], text: str) -> bool:
     lowered = normalize_text(text)
     title = strip_summary_markup(str(entry.get("title") or ""))
     title_lower = title.lower()
-    if any(hint in lowered for hint in X_PROMO_HINTS):
+    if any(text_has_hint(lowered, hint) for hint in X_PROMO_HINTS):
+        return True
+    if looks_like_x_context_only_item(text):
         return True
     if title_lower in {"image", "video"}:
         return True

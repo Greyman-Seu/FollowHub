@@ -44,6 +44,11 @@ Review rule of thumb:
 - recent `repeat` should usually be excluded
 - recent `followup` should be included only when it adds signal beyond prior coverage
 - high prior `publish_count` or `max_mention_count` should raise the bar for inclusion unless the new item clearly advances the story
+- for `source_type: "x"`, use a high-signal bar: include only if the post contains a concrete object and value, such as a model/product/paper/dataset/benchmark/release, a specific capability/result/comparison, or a substantive technical/trend/market/risk viewpoint
+- exclude X posts that are only institutional PR or activity logs: conference attendance, opening ceremonies, panels, “shared our vision”, “AI/trust/society” principles, mission/commitment statements, hiring/course/promotion, or generic event recaps
+- if the best one-line summary would be “提到 AI/模型/Agent 相关动态；需要补全具体对象、观点或能力变化”, exclude it instead of publishing a placeholder
+
+For excluded X items, leave `one_liner_zh` and `summary_cn` empty unless a short exclusion note is useful in `reason`.
 
 ## Output
 

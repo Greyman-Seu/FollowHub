@@ -169,6 +169,38 @@ class RssDailySkillTests(unittest.TestCase):
         self.assertFalse(payload["items"][0]["include_in_digest"])
         self.assertIn("promotional or low-signal", payload["items"][0]["reason"])
 
+    def test_auto_filter_drops_x_institutional_activity_without_concrete_signal(self):
+        filter_candidates = [
+            {
+                "id": "x:1",
+                "source_type": "x",
+                "source_name": "Mila_Quebec",
+                "title": "Mila attended the Obama Presidential Center grand opening",
+                "summary": (
+                    "Mila was honored to participate in the grand opening ceremony. "
+                    "Our CEO joined a panel on AI, technology, truth and trust, shared Mila's vision, "
+                    "and emphasized trustworthy AI that serves society."
+                ),
+                "content_text": (
+                    "The new center is an international gathering place. Mila remains committed "
+                    "to shaping a future where technological progress and shared responsibility go hand in hand."
+                ),
+                "story_id": "story:1",
+                "story_status": "new",
+                "published_at": "2026-06-18T00:00:00+00:00",
+                "canonical_id": "x:1",
+                "duplicate_count": 0,
+                "duplicate_items": [],
+            }
+        ]
+        focus = {"keywords": ["robot", "llm", "agent", "ai"], "exclude_keywords": [], "topic_context": ""}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "filter_results.json"
+            payload = self.module.auto_filter(filter_candidates, focus, out, {"stories": []})
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertFalse(payload["items"][0]["include_in_digest"])
+        self.assertIn("promotional or low-signal", payload["items"][0]["reason"])
+
     def test_auto_filter_keeps_x_with_technical_signal(self):
         filter_candidates = [
             {

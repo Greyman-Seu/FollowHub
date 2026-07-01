@@ -59,6 +59,22 @@ class ArxivFigSkillTests(unittest.TestCase):
             "https://ar5iv.labs.arxiv.org/html/2602.10105v1/assets/src/pipeline_new.png",
         )
 
+    def test_extract_figures_from_html_resolves_arxiv_version_paths_against_html_root(self):
+        html = (
+            '<figure><img src="2605.13548v3/figures/main_plot2.png">'
+            '<figcaption>Figure 1: Overview.</figcaption></figure>'
+        )
+
+        figures = self.module.extract_figures_from_html(
+            html,
+            "https://arxiv.org/html/2605.13548",
+        )
+
+        self.assertEqual(
+            figures[0]["image_url"],
+            "https://arxiv.org/html/2605.13548v3/figures/main_plot2.png",
+        )
+
     def test_parse_tex_captions_handles_nested_braces(self):
         tex = r"""
         \begin{figure}

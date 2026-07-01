@@ -25,7 +25,7 @@ import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import yaml
 from PIL import Image
@@ -512,11 +512,29 @@ def fetch_html(arxiv_id: str):
     return None, None
 
 
+def resolve_html_image_url(html_url: str, image_src: str) -> str:
+    src = (image_src or "").strip()
+    parsed = urlparse(src)
+    if parsed.scheme or src.startswith("//") or src.startswith("/"):
+        return urljoin(html_url, src)
+
+    # arXiv official HTML often emits paths like
+    # "2605.13548v3/figures/main_plot2.png" from a page at
+    # https://arxiv.org/html/2605.13548.  urljoin against the page URL
+    # treats 2605.13548 as a file and may produce an extra duplicated path
+    # segment when the caller has normalized the base with a trailing slash.
+    # Resolve these source-version paths against /html/ instead.
+    if re.match(r"^\d{4}\.\d{4,6}v\d+/", src):
+        parsed_html = urlparse(html_url)
+        return f"{parsed_html.scheme}://{parsed_html.netloc}/html/{src}"
+
+    return urljoin(html_url if html_url.endswith("/") else f"{html_url}/", src)
+
+
 def extract_figures_from_html(html: str, html_url: str):
     """Level 1: Extract figures from HTML <figure> tags."""
     figures_raw = re.findall(r"<figure[^>]*>.*?</figure>", html, re.DOTALL)
     figures = []
-    base_url = html_url if html_url.endswith("/") else f"{html_url}/"
 
     for i, fig in enumerate(figures_raw):
         img = re.search(r'<img[^>]*src="([^"]+)"', fig)
@@ -526,7 +544,7 @@ def extract_figures_from_html(html: str, html_url: str):
         cap = re.search(r"<figcaption[^>]*>(.*?)</figcaption>", fig, re.DOTALL)
         cap_text = re.sub(r"<[^>]+>", "", cap.group(1)).strip() if cap else ""
 
-        src = urljoin(base_url, img.group(1).strip())
+        src = resolve_html_image_url(html_url, img.group(1))
 
         figures.append(
             {

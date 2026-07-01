@@ -51,7 +51,7 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="publish-wiki-") as tmpdir:
       stage = Path(tmpdir) / "wiki"
-      shutil.copytree(generated_dir, stage / "data")
+      shutil.copytree(generated_dir, stage)
       if graph_data.is_file():
           (stage / "graph").mkdir(parents=True, exist_ok=True)
           shutil.copy2(graph_data, stage / "graph" / "graph-data.json")

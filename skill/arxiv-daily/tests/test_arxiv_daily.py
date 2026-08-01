@@ -130,6 +130,30 @@ class ArxivDailySkillTests(unittest.TestCase):
             self.module.ensure_enrich_agent_completion_done(enrich_payload, Path("/tmp/enrich_results.json"))
         self.assertIn("Pending tasks: 1", str(ctx.exception))
 
+    def test_low_quality_chinese_summary_is_rejected(self):
+        raw_payload = {
+            "entries": [
+                {
+                    "id": "2606.24679",
+                    "title": "FlowPipe: LLM-Enhanced Conditional Generative Flow Networks for Data Preparation Pipeline Construction",
+                }
+            ]
+        }
+        filter_payload = {
+            "items": [
+                {
+                    "arxiv_id": "2606.24679",
+                    "include_in_follow": True,
+                    "one_liner_zh": "FlowPipe: LLM-Enhanced Conditional Generative Flow Networks for Data Preparation Pipeline Construction 围绕机器人模仿学习，改进策略训练或物体交互表征。",
+                    "summary_cn": "论文摘要要点：FlowPipe: LLM-Enhanced Conditional Generative Flow Networks for Data Preparation Pipeline Construction 围绕机器人模仿学习，改进策略训练或物体交互表征。 Data preparation pipelines improve data quality in machine learning by transforming raw tables into learning-ready data through sequential cleaning and feature transformation operators.",
+                }
+            ]
+        }
+        failures = self.module.validate_selected_chinese_quality(filter_payload, raw_payload)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("2606.24679", failures[0])
+        self.assertIn("low-quality template marker", failures[0])
+
     def test_run_enrich_enables_external_metadata(self):
         captured = {}
         original_run_command = self.module.run_command

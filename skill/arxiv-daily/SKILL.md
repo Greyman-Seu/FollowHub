@@ -75,7 +75,7 @@ The agent must not:
 8. Build full filter batches from all `keep` and `uncertain` papers.
 9. Use subagents or equivalent worker delegation to run `arxiv-filter`, usually in batches.
 10. Merge all filter outputs into `filter_results.json`.
-11. Retry `arxiv-filter` for selected papers that still lack `one_liner_zh` or `summary_cn`.
+11. Retry `arxiv-filter` for selected papers that still lack `one_liner_zh` or `summary_cn`, or whose Chinese fields are non-empty but clearly low-quality/template output.
 12. Build enrich inputs from `include_in_follow=true` papers only.
 13. Run `arxiv-enrich` on the selected subset only.
 14. If `arxiv-enrich` reports agent-completion tasks, the invoking agent must complete them before publish.
@@ -172,6 +172,8 @@ Each `arxiv-filter` worker returns:
 - Successful daily runs should publish to R2 by default.
 - If a paper has no filter result, keep it out of the published shortlist unless the user explicitly asks for raw publishing.
 - If a selected paper is missing `one_liner_zh` or `summary_cn`, retry `arxiv-filter` first.
+- Non-empty Chinese fields are not automatically valid. Before publish, reject obvious placeholder/template output such as `论文摘要要点：...`, English-title-prefixed one-liners, generic topic labels, or summaries with too much untranslated English.
+- If Chinese quality is still questionable after retry, treat it as an agent-completion blocker rather than publishing fallback-quality text.
 - If fields are still missing after filter retry, or organization metadata is still missing after enrich, `arxiv-enrich` should expose agent-completion tasks for those papers.
 - For arXiv daily publish, unresolved agent-completion tasks block publish by default.
 - If `listing_date != today` for a "today" run, the agent should call that out clearly. Publishing may still proceed when the user asked to run today's available arXiv update or when `allow_stale_listing` is explicitly accepted.
@@ -185,6 +187,7 @@ arxiv-daily/run_daily.py
   -> may write prefilter/filter artifacts for local replay or validation
   -> selected-only arxiv-enrich stage
   -> agent completion for enrich-reported missing Chinese fields
+  -> quality gate for selected-paper Chinese fields
   -> follow-publish
   -> rcli verification
 ```

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -31,6 +32,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "arxiv-daily-output"
 SUMMARY_OVERRIDES_PATH = Path(__file__).resolve().parent / "summary_overrides.json"
 SOURCE_ORDER = ["arxiv", "wechat", "x", "bilibili"]
+LOW_QUALITY_CHINESE_MARKERS = [
+    "论文摘要要点：",
+    "面向 VLA/机器人操作，提出改进视觉-动作表征或适配机制以提升真实任务表现",
+    "围绕机器人模仿学习，改进策略训练或物体交互表征",
+    "改进机器人策略学习/控制流程，关注泛化、稳定性或效率",
+]
 
 
 def fail(message: str) -> NoReturn:
@@ -109,6 +116,51 @@ def dedup_strings(values: List[str]) -> List[str]:
             seen.add(value)
             result.append(value)
     return result
+
+
+def count_latin_letters(text: str) -> int:
+    return len(re.findall(r"[A-Za-z]", text))
+
+
+def count_cjk_chars(text: str) -> int:
+    return len(re.findall(r"[\u4e00-\u9fff]", text))
+
+
+def starts_with_english_title(value: str, title: str) -> bool:
+    value_norm = re.sub(r"\s+", " ", str(value or "")).strip().lower()
+    title_norm = re.sub(r"\s+", " ", str(title or "")).strip().lower()
+    if not value_norm or not title_norm:
+        return False
+    title_prefix = title_norm[: min(len(title_norm), 80)].rstrip(":：-— ")
+    return len(title_prefix) >= 18 and value_norm.startswith(title_prefix)
+
+
+def chinese_summary_quality_issues(item: Dict[str, object], raw_entry: Optional[Dict[str, object]] = None) -> List[str]:
+    """Return quality issues for agent-produced Chinese fields.
+
+    arxiv-filter owns one_liner_zh and summary_cn for selected papers. arxiv-enrich
+    only emits agent-completion tasks when those fields are missing, so arxiv-daily
+    must reject non-empty placeholder/template text before publish.
+    """
+    issues: List[str] = []
+    title = str(item.get("title") or (raw_entry or {}).get("title") or "")
+    one_liner = str(item.get("one_liner_zh") or "").strip()
+    summary_cn = str(item.get("summary_cn") or "").strip()
+    combined = f"{one_liner}\n{summary_cn}"
+    for marker in LOW_QUALITY_CHINESE_MARKERS:
+        if marker in combined:
+            issues.append(f"contains low-quality template marker: {marker}")
+            break
+    if starts_with_english_title(one_liner, title):
+        issues.append("one_liner_zh starts with the English title")
+    if starts_with_english_title(summary_cn.removeprefix("论文摘要要点：").strip(), title):
+        issues.append("summary_cn starts with the English title")
+    if summary_cn:
+        latin = count_latin_letters(summary_cn)
+        cjk = count_cjk_chars(summary_cn)
+        if latin >= 120 and latin > cjk * 1.2:
+            issues.append("summary_cn has too much untranslated English")
+    return issues
 
 
 @dataclass
@@ -380,6 +432,19 @@ def collect_missing_summary_fields(filter_payload: Dict[str, object]) -> List[st
         if not str(item.get("one_liner_zh") or "").strip() or not str(item.get("summary_cn") or "").strip():
             missing.append(arxiv_id)
     return missing
+
+
+def validate_selected_chinese_quality(filter_payload: Dict[str, object], raw_payload: Dict[str, object]) -> List[str]:
+    raw_by_id = {str(entry.get("id") or ""): dict(entry) for entry in (raw_payload.get("entries") or [])}
+    failures = []
+    for item in filter_payload.get("items", []):
+        if not bool(item.get("include_in_follow", False)):
+            continue
+        arxiv_id = str(item.get("arxiv_id") or "")
+        issues = chinese_summary_quality_issues(item, raw_by_id.get(arxiv_id))
+        if issues:
+            failures.append(f"{arxiv_id}: {', '.join(issues)}")
+    return failures
 
 
 def validate_filter_results(path: Path, allowed_ids: List[str]) -> Dict[str, object]:
@@ -713,7 +778,14 @@ def command_daily(args: argparse.Namespace) -> int:
     filter_payload = repair_missing_follow_metadata(filter_payload=filter_payload, enrich_payload=enrich_payload)
     write_json(paths.filter_results, filter_payload)
     missing_summary_ids = collect_missing_summary_fields(filter_payload)
-    stage_log("filter", "post-enrich-merge", missing_summary_count=len(missing_summary_ids))
+    quality_failures = validate_selected_chinese_quality(filter_payload, raw_payload)
+    stage_log("filter", "post-enrich-merge", missing_summary_count=len(missing_summary_ids), quality_failure_count=len(quality_failures))
+    if quality_failures:
+        fail(
+            "Selected arXiv papers contain low-quality Chinese summary fields. "
+            "Rerun arxiv-filter or complete agent translation before publish.\n"
+            + "\n".join(quality_failures[:20])
+        )
 
     domain_config = resolve_domain_config(config)
     digest_payload = build_digest(raw_payload, filter_payload, enrich_payload, domain_config, paths.digest_json)

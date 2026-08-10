@@ -786,9 +786,22 @@ def download_pdf(arxiv_id: str, dest_path: str) -> bool:
             return False
         with open(dest_path, "wb") as handle:
             handle.write(resp.read())
-        return os.path.getsize(dest_path) > 1000
+        if os.path.getsize(dest_path) > 1000:
+            return True
     except Exception:
-        return False
+        pass
+
+    # arXiv occasionally returns a tiny challenge/error response to urllib while
+    # accepting a normal redirect-aware HTTP client.  Always try this fallback
+    # after any invalid urllib response, not only after a thrown exception.
+    result = subprocess.run(
+        ["curl", "--fail", "--location", "--retry", "2", "--connect-timeout", "20", "--output", dest_path, url],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    return result.returncode == 0 and os.path.exists(dest_path) and os.path.getsize(dest_path) > 1000
 
 
 def extract_captions_from_pdf_text(pdf_path: str) -> dict:
@@ -917,6 +930,24 @@ def extract_from_pdf(arxiv_id: str) -> list:
             doc.close()
         except Exception:
             pass
+
+    if not extracted and shutil.which("pdftoppm"):
+        # Keep the PDF fallback available in lean runtime images where PyMuPDF is
+        # intentionally absent.  A rendered page is less precise than extracting
+        # an embedded raster, but is still a usable figure candidate.
+        for page_num in range(1, 31):
+            output_stem = os.path.join(img_dir, f"page{page_num}")
+            output_path = f"{output_stem}.png"
+            result = subprocess.run(
+                ["pdftoppm", "-f", str(page_num), "-l", str(page_num), "-r", "150", "-png", "-singlefile", pdf_path, output_stem],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if result.returncode != 0 or not os.path.isfile(output_path):
+                break
+            extracted.append({"page": page_num, "path": output_path, "width": 0, "height": 0})
 
     if not extracted:
         shutil.rmtree(output_dir, ignore_errors=True)

@@ -135,6 +135,11 @@ def starts_with_english_title(value: str, title: str) -> bool:
     return len(title_prefix) >= 18 and value_norm.startswith(title_prefix)
 
 
+def remove_summary_prefix(value: str) -> str:
+    prefix = "论文摘要要点："
+    return value[len(prefix):] if value.startswith(prefix) else value
+
+
 def chinese_summary_quality_issues(item: Dict[str, object], raw_entry: Optional[Dict[str, object]] = None) -> List[str]:
     """Return quality issues for agent-produced Chinese fields.
 
@@ -153,7 +158,7 @@ def chinese_summary_quality_issues(item: Dict[str, object], raw_entry: Optional[
             break
     if starts_with_english_title(one_liner, title):
         issues.append("one_liner_zh starts with the English title")
-    if starts_with_english_title(summary_cn.removeprefix("论文摘要要点：").strip(), title):
+    if starts_with_english_title(remove_summary_prefix(summary_cn).strip(), title):
         issues.append("summary_cn starts with the English title")
     if summary_cn:
         latin = count_latin_letters(summary_cn)

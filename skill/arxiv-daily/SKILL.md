@@ -120,7 +120,7 @@ It must not perform paper-level review or completion itself, including when ther
 - every `arxiv-filter` inclusion decision, domain assignment, Chinese one-liner, Chinese abstract translation, and reason
 - every `arxiv-enrich` agent-completion task, including author-organization research
 
-If subagent delegation is unavailable, stop before publication and report the blocker. Do not substitute main-agent judgments or `--auto`/heuristic output for production publishing.
+If a subagent is unavailable, times out, or returns an invalid result, keep the pipeline pending at that stage and retry delegation (including reassigning the batch to a fresh subagent) until valid worker output is available. Do not substitute main-agent judgments or `--auto`/heuristic output for production publishing, and do not advance to a later stage until the retried worker output has been merged and validated.
 
 Recommended defaults:
 

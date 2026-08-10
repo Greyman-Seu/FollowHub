@@ -34,6 +34,7 @@ If any required step cannot be completed, the agent must stop and report the blo
 The agent must not:
 
 - manually shortlist papers from raw `arxiv-collect` output as a substitute for `arxiv-title-prefilter` or `arxiv-filter`
+- make title-prefilter, semantic-filter, Chinese-summary, or organization-completion decisions for individual papers in the invoking/main agent
 - publish directly from raw `arxiv-collect` output
 - skip `arxiv-filter` when `raw_count > 20`
 - treat `arxiv-collect` built-in enrichment as a replacement for the explicit `arxiv-enrich` stage
@@ -106,6 +107,20 @@ Missing required artifacts are a failed run, not a warning.
 ## Subagent Policy
 
 Batching belongs here, not in worker skills.
+
+The invoking/main agent is an orchestrator only. It may:
+
+- split inputs into batches, create and validate required artifacts, and merge worker outputs
+- check output quality against this skill's publication rules
+- invoke `arxiv-enrich`, `follow-publish`, and verification tools
+
+It must not perform paper-level review or completion itself, including when there is only one candidate paper. The following work must be delegated to subagents using the relevant worker skill:
+
+- every `arxiv-title-prefilter` decision and reason
+- every `arxiv-filter` inclusion decision, domain assignment, Chinese one-liner, Chinese abstract translation, and reason
+- every `arxiv-enrich` agent-completion task, including author-organization research
+
+If subagent delegation is unavailable, stop before publication and report the blocker. Do not substitute main-agent judgments or `--auto`/heuristic output for production publishing.
 
 Recommended defaults:
 

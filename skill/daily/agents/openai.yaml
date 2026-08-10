@@ -1,0 +1,4 @@
+interface:
+  display_name: "FollowHub Daily"
+  short_description: "Run arXiv and RSS daily pipelines together"
+  default_prompt: "Run the FollowHub daily update for arXiv and RSS."

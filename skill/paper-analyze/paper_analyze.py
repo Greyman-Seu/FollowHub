@@ -1254,6 +1254,8 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--publish-date", default=str(date.today()), help="Paper publish date")
     common.add_argument("--domain", default="llm-vlm", help="Wiki domain slug")
     common.add_argument("--author", action="append", default=[], help="Repeatable author")
+    common.add_argument("--related-organization", action="append", default=[], help="Repeatable author organization")
+    common.add_argument("--related-company", action="append", default=[], help="Repeatable related company")
     common.add_argument("--keyword", action="append", default=[], help="Repeatable keyword")
     common.add_argument("--tag", action="append", default=[], help="Repeatable tag")
     common.add_argument("--related-topic", action="append", default=[], help="Repeatable related topic slug")

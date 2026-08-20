@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +110,23 @@ An English abstract.
     def test_accepts_detailed_structured_background_and_method(self):
         with tempfile.TemporaryDirectory() as tmp:
             errors, _ = MODULE.check_markdown(self.write_note(Path(tmp), thin=False))
+
+        self.assertEqual(errors, [])
+
+    def test_accepts_heading_structured_background_and_method(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_note(Path(tmp), thin=False)
+            text = path.read_text(encoding="utf-8")
+            for label in ["动机", "问题缺口", "方法概述", "核心机制", "方法拆解", "关键要点"]:
+                text = re.sub(
+                    rf"^\*\*{label}：\*\*\s*(.*)$",
+                    rf"### {label}\n\n\1",
+                    text,
+                    flags=re.MULTILINE,
+                )
+            path.write_text(text, encoding="utf-8")
+
+            errors, _ = MODULE.check_markdown(path)
 
         self.assertEqual(errors, [])
 

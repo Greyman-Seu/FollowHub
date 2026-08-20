@@ -233,6 +233,8 @@ Required source-note fields include:
 
 These thresholds are a mechanical floor, not the writing target. Never pad a field or fill it with a placeholder merely to pass. Re-read the paper or existing note and add a concrete, paper-specific explanation that lets a reader understand why the work is needed and how it operates.
 
+The bold labels above are the canonical authoring syntax and must be emitted verbatim by new runs. `### 动机` or `### 方法概述` is supported only as a legacy parser fallback; do not generate a mixture of headings and bold labels. Supplemental method subsections are allowed only after all four required method blocks are present.
+
 ## Recommended Working Patterns
 
 - One paper, normal use:

@@ -139,6 +139,32 @@ status: analyzed
 ## 相关主题
 ```
 
+For the structured blocks inside `背景与问题` and `方法`, emit exactly this canonical form:
+
+```markdown
+## 背景与问题
+
+**动机：** 至少 60 个有效字符的论文特定说明。
+
+**问题缺口：** 至少 60 个有效字符的论文特定说明。
+
+## 方法
+
+**方法概述：** 至少 80 个有效字符，先给出完整流程骨架。
+
+**核心机制：** 至少 80 个有效字符，解释机制为何成立。
+
+**方法拆解：**
+
+- 至少 3 个具体步骤或组件。
+
+**关键要点：**
+
+- 至少 2 个论文特定结论。
+```
+
+This bold-label form is the only format new notes should emit. The package parser may accept `###` subheadings for backward compatibility, but that compatibility is not an alternate authoring format. Do not replace a required labeled block with a free-form subheading such as `### 数据扩展与清洗`.
+
 Domain and label rules:
 
 - `domain`, `primary_domain_slug`, and the first `domain_slugs` entry must name the material's main wiki domain.
@@ -264,6 +290,7 @@ Section intent:
   - internally structure it as:
     - `动机`
     - `问题缺口`
+  - emit these as the exact labels `**动机：**` and `**问题缺口：**`; do not emit them as `###` headings
   - for wiki-ready paper notes, each labeled block must contain at least 60 meaningful characters of paper-specific explanation
 - `摘要`
   - keep the original English abstract
@@ -278,6 +305,7 @@ Section intent:
     - `核心机制`
     - `方法拆解`
     - `关键要点`
+  - emit them as the exact labels `**方法概述：**`, `**核心机制：**`, `**方法拆解：**`, and `**关键要点：**`; do not substitute arbitrary `###` headings
   - for wiki-ready paper notes, `方法概述` and `核心机制` must each contain at least 80 meaningful characters, `方法拆解` at least 3 concrete items, and `关键要点` at least 2 paper-specific items
 - `结果`
   - list only the most decision-relevant outcomes

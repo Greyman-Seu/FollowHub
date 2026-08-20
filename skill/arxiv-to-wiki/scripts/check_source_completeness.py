@@ -131,6 +131,15 @@ def extract_labeled_block(section: str, labels: list[str]) -> str:
     capture = False
     out: list[str] = []
     for line in section.splitlines():
+        heading_match = re.match(r"^\s*#{3,6}\s+(.+?)\s*#*\s*$", line)
+        if heading_match:
+            label = normalize_label(strip_markdown(heading_match.group(1)))
+            if label in wanted:
+                capture = True
+                out = []
+                continue
+            if capture:
+                break
         match = re.match(r"^\s*\*\*([^*]+?)\s*[:：]?\*\*\s*(.*)$", line)
         if match:
             label = normalize_label(match.group(1))

@@ -264,6 +264,7 @@ Section intent:
   - internally structure it as:
     - `动机`
     - `问题缺口`
+  - for wiki-ready paper notes, each labeled block must contain at least 60 meaningful characters of paper-specific explanation
 - `摘要`
   - keep the original English abstract
   - add a faithful Chinese translation
@@ -276,6 +277,8 @@ Section intent:
     - `方法概述`
     - `核心机制`
     - `方法拆解`
+    - `关键要点`
+  - for wiki-ready paper notes, `方法概述` and `核心机制` must each contain at least 80 meaningful characters, `方法拆解` at least 3 concrete items, and `关键要点` at least 2 paper-specific items
 - `结果`
   - list only the most decision-relevant outcomes
   - keep 1 compact table

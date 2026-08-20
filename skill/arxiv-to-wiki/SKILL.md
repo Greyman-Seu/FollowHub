@@ -211,16 +211,27 @@ Required source-note fields include:
 
 - frontmatter source type, source URL, date, domain, tags, related topics, and status
 - all stable paper sections from `paper-analyze`
+- structured, reader-facing background and method blocks:
+  - `**动机：**` and `**问题缺口：**`, each with at least 60 meaningful characters
+  - `**方法概述：**` and `**核心机制：**`, each with at least 80 meaningful characters
+  - `**方法拆解：**` with at least 3 concrete steps or components
+  - `**关键要点：**` with at least 2 paper-specific takeaways
 - `风险与判断` with explicit labeled blocks:
   - `**局限：**`
   - `**适用场景：**`
   - `**最终判断：**`
 - package JSON fields after build:
+  - `backgroundMotivation`
+  - `backgroundGap`
+  - `methodOverview`
+  - `methodCore`
+  - `methodBreakdown`
+  - `methodTakeaways`
   - `riskLimitations`
   - `riskScenarios`
   - `riskJudgment`
 
-Never fill a missing field with a placeholder. Re-read the paper or existing note and add the missing interpretation.
+These thresholds are a mechanical floor, not the writing target. Never pad a field or fill it with a placeholder merely to pass. Re-read the paper or existing note and add a concrete, paper-specific explanation that lets a reader understand why the work is needed and how it operates.
 
 ## Recommended Working Patterns
 

@@ -83,7 +83,7 @@ existing wiki content
 -> publish-wiki / R2 sync
 ```
 
-Treat missing `riskScenarios` or `riskJudgment` in package JSON as a blocking error. The Markdown may look complete while the page-facing JSON is empty, so always check both layers before finishing.
+Treat missing structured background/method fields (`backgroundMotivation`, `backgroundGap`, `methodOverview`, `methodCore`, `methodBreakdown`, `methodTakeaways`) or risk fields (`riskLimitations`, `riskScenarios`, `riskJudgment`) in package JSON as a blocking error. The Markdown may look complete while the page-facing JSON is empty, so always check both layers before finishing.
 
 ## Batch Flow With Subagents
 

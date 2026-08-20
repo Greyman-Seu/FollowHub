@@ -44,7 +44,25 @@ RISK_LABELS = {
     "riskJudgment": ["最终判断", "判断", "Final Judgment", "Verdict"],
 }
 
-JSON_REQUIRED_ARRAYS = ["riskLimitations", "riskScenarios", "riskJudgment"]
+STRUCTURED_TEXT_BLOCKS = {
+    "backgroundMotivation": ("背景与问题", ["动机", "为什么做", "Motivation"], 60),
+    "backgroundGap": ("背景与问题", ["问题缺口", "Gap"], 60),
+    "methodOverview": ("方法", ["方法概述", "Overview"], 80),
+    "methodCore": ("方法", ["核心机制", "Core Mechanism"], 80),
+}
+
+STRUCTURED_LIST_BLOCKS = {
+    "methodBreakdown": ("方法", ["方法拆解", "Breakdown"], 3),
+    "methodTakeaways": ("方法", ["关键要点", "Key Takeaways"], 2),
+}
+
+JSON_REQUIRED_ARRAYS = {
+    "riskLimitations": 1,
+    "riskScenarios": 1,
+    "riskJudgment": 1,
+    "methodBreakdown": 3,
+    "methodTakeaways": 2,
+}
 JSON_REQUIRED_TEXT = ["tldr", "method", "risks", "sourceUrl"]
 
 
@@ -67,6 +85,10 @@ def strip_markdown(value: str) -> str:
     text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"^[>\-*]\s*", "", text, flags=re.MULTILINE)
     return text.strip()
+
+
+def meaningful_length(value: str) -> int:
+    return len(re.sub(r"\s+", "", strip_markdown(value)))
 
 
 def split_frontmatter(text: str) -> tuple[str, str]:
@@ -124,6 +146,15 @@ def extract_labeled_block(section: str, labels: list[str]) -> str:
     return "\n".join(out).strip()
 
 
+def split_list_items(value: str) -> list[str]:
+    items: list[str] = []
+    for line in str(value or "").splitlines():
+        match = re.match(r"^\s*(?:[-*+]|\d+[.)])\s+(.+)$", line)
+        if match and strip_markdown(match.group(1)):
+            items.append(strip_markdown(match.group(1)))
+    return items
+
+
 def source_paths(wiki_root: Path, slugs: list[str], check_all: bool) -> list[Path]:
     source_dir = wiki_root / "wiki" / "sources"
     if check_all:
@@ -153,6 +184,25 @@ def check_markdown(path: Path) -> tuple[list[str], list[str]]:
         if not strip_markdown(section):
             errors.append(f"missing or empty section: {heading}")
 
+    for field, (heading, labels, minimum) in STRUCTURED_TEXT_BLOCKS.items():
+        section = section_after_heading(body, heading)
+        block = extract_labeled_block(section, labels)
+        actual = meaningful_length(block)
+        if actual < minimum:
+            errors.append(
+                f"structured block {field} is missing or too short: "
+                f"{actual} meaningful character(s), need at least {minimum}"
+            )
+
+    for field, (heading, labels, minimum) in STRUCTURED_LIST_BLOCKS.items():
+        section = section_after_heading(body, heading)
+        block = extract_labeled_block(section, labels)
+        actual = len(split_list_items(block))
+        if actual < minimum:
+            errors.append(
+                f"structured list {field} has {actual} item(s), need at least {minimum}"
+            )
+
     risk_section = section_after_heading(body, "风险与判断")
     for field, labels in RISK_LABELS.items():
         block = extract_labeled_block(risk_section, labels)
@@ -175,10 +225,19 @@ def check_package_json(package_dir: Path, slug: str) -> tuple[list[str], list[st
     for key in JSON_REQUIRED_TEXT:
         if not str(data.get(key) or "").strip():
             errors.append(f"package JSON missing text field: {key}")
-    for key in JSON_REQUIRED_ARRAYS:
+    for key, minimum in JSON_REQUIRED_ARRAYS.items():
         value = data.get(key)
-        if not isinstance(value, list) or not any(str(item).strip() for item in value):
-            errors.append(f"package JSON missing non-empty array field: {key}")
+        actual = len([item for item in value if str(item).strip()]) if isinstance(value, list) else 0
+        if actual < minimum:
+            errors.append(f"package JSON array field {key} has {actual} item(s), need at least {minimum}")
+
+    for key, (_, _, minimum) in STRUCTURED_TEXT_BLOCKS.items():
+        actual = meaningful_length(str(data.get(key) or ""))
+        if actual < minimum:
+            errors.append(
+                f"package JSON text field {key} is missing or too short: "
+                f"{actual} meaningful character(s), need at least {minimum}"
+            )
 
     source_url = str(data.get("sourceUrl") or data.get("htmlUrl") or "")
     if "arxiv.org" in source_url:

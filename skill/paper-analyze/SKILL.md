@@ -109,6 +109,7 @@ primary_domain_slug:
 domain_slugs:
 tags:
 images:
+hero_image:
 related_topics:
 status: analyzed
 ---
@@ -438,6 +439,7 @@ The note is not ready if any of these are empty or placeholder-like:
   - PDF link
   - hjfy translation link
 - at least one useful figure when the source exposes a meaningful figure URL
+- an explicit `hero_image` chosen from the paper's overview, architecture, system, or pipeline figures when such a figure exists; do not assume the website will fall back to `images[0]`
 
 If a field is missing, fill it from the paper analysis before calling the helper writer. Do not rely on later website sync to infer missing interpretation.
 

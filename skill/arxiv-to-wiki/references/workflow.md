@@ -85,6 +85,8 @@ existing wiki content
 
 Treat missing structured background/method fields (`backgroundMotivation`, `backgroundGap`, `methodOverview`, `methodCore`, `methodBreakdown`, `methodTakeaways`) or risk fields (`riskLimitations`, `riskScenarios`, `riskJudgment`) in package JSON as a blocking error. The Markdown may look complete while the page-facing JSON is empty, so always check both layers before finishing.
 
+If the source note contains a useful figure, require an explicit `hero_image` in Markdown and a non-empty `heroImage` in package JSON. The page does not infer its hero from `images` or `figureGallery`.
+
 New notes must use the canonical bold labels from `arxiv-to-wiki/SKILL.md`. Heading-style blocks such as `### 方法概述` remain readable for legacy notes, but generators must not emit them or mix the two styles.
 
 ## Batch Flow With Subagents

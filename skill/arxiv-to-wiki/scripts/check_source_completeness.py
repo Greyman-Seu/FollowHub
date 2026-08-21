@@ -218,7 +218,10 @@ def check_markdown(path: Path) -> tuple[list[str], list[str]]:
         if not strip_markdown(block):
             errors.append(f"missing or empty risk labeled block for {field}: {' / '.join(labels)}")
 
-    if not re.search(r"!\[[^\]]*\]\([^)]+\)", body):
+    has_figure = bool(re.search(r"!\[[^\]]*\]\([^)]+\)", body))
+    if has_figure and not frontmatter_has(frontmatter, ["hero_image", "heroImage"]):
+        errors.append("note contains figures but frontmatter is missing hero_image")
+    if not has_figure:
         warnings.append("no figures found in note body")
     return errors, warnings
 
@@ -255,6 +258,8 @@ def check_package_json(package_dir: Path, slug: str) -> tuple[list[str], list[st
                 warnings.append(f"arXiv source package JSON missing optional but expected field: {key}")
     if not data.get("figureGallery"):
         warnings.append("package JSON has no figureGallery")
+    elif not str(data.get("heroImage") or "").strip():
+        errors.append("package JSON has figureGallery but missing heroImage")
     return errors, warnings
 
 

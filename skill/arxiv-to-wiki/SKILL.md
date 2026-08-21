@@ -210,6 +210,7 @@ The loop must pass before the task is considered done. Fix the source note and r
 Required source-note fields include:
 
 - frontmatter source type, source URL, date, domain, tags, related topics, and status
+- an explicit `hero_image` whenever the note contains a useful paper figure; `images` alone does not populate the page hero
 - all stable paper sections from `paper-analyze`
 - structured, reader-facing background and method blocks:
   - `**动机：**` and `**问题缺口：**`, each with at least 60 meaningful characters
@@ -230,6 +231,7 @@ Required source-note fields include:
   - `riskLimitations`
   - `riskScenarios`
   - `riskJudgment`
+  - `heroImage` when `figureGallery` is non-empty
 
 These thresholds are a mechanical floor, not the writing target. Never pad a field or fill it with a placeholder merely to pass. Re-read the paper or existing note and add a concrete, paper-specific explanation that lets a reader understand why the work is needed and how it operates.
 

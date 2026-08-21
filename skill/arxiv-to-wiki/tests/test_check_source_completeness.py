@@ -35,6 +35,7 @@ domains: [robotics]
 tags: [vla]
 related_topics: [robotics]
 status: analyzed
+hero_image: https://arxiv.org/html/1234.56789/overview.png
 ---
 
 # Example
@@ -44,6 +45,8 @@ status: analyzed
 
 ## 直观理解
 这是直观解释。
+
+![架构总览](https://arxiv.org/html/1234.56789/overview.png)
 
 ## 核心信息
 这是核心信息。
@@ -151,6 +154,47 @@ An English abstract.
         self.assertTrue(any("backgroundMotivation" in error for error in errors))
         self.assertTrue(any("methodOverview" in error for error in errors))
         self.assertTrue(any("methodBreakdown" in error for error in errors))
+
+    def test_rejects_figure_without_explicit_hero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_note(Path(tmp), thin=False)
+            text = path.read_text(encoding="utf-8").replace(
+                "hero_image: https://arxiv.org/html/1234.56789/overview.png\n",
+                "",
+            )
+            path.write_text(text, encoding="utf-8")
+
+            errors, _ = MODULE.check_markdown(path)
+
+        self.assertIn("note contains figures but frontmatter is missing hero_image", errors)
+
+    def test_package_rejects_figure_gallery_without_hero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp)
+            source_dir = package_dir / "source"
+            source_dir.mkdir()
+            payload = {
+                "tldr": "结论",
+                "method": "方法",
+                "risks": "风险",
+                "sourceUrl": "https://arxiv.org/abs/1234.56789",
+                "riskLimitations": ["限制"],
+                "riskScenarios": ["场景"],
+                "riskJudgment": ["判断"],
+                "backgroundMotivation": detailed_text("动机", 70),
+                "backgroundGap": detailed_text("缺口", 70),
+                "methodOverview": detailed_text("概述", 90),
+                "methodCore": detailed_text("机制", 90),
+                "methodBreakdown": ["步骤一", "步骤二", "步骤三"],
+                "methodTakeaways": ["要点一", "要点二"],
+                "figureGallery": [{"src": "https://example.com/overview.png"}],
+                "heroImage": "",
+            }
+            (source_dir / "example.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            errors, _ = MODULE.check_package_json(package_dir, "example")
+
+        self.assertIn("package JSON has figureGallery but missing heroImage", errors)
 
 
 if __name__ == "__main__":

@@ -34,3 +34,18 @@ Recent commits use short imperative subjects such as `Fix wiki publish package l
 ## Configuration & Secrets
 
 Create local configuration from `*.example.yaml` files. Never commit API keys, R2 credentials, personal feed lists, or machine-specific paths. Review generated output before publishing and use historical-publish flags only when intentionally repairing prior dates.
+
+## Persistent User Workflow
+
+The user's primary day-to-day skills are `skill/daily/` and
+`skill/arxiv-to-wiki/`; interpret `arxiv2wiki` as an alias for the latter. Read
+the relevant `SKILL.md` before running or changing either workflow. Create new
+skills and update existing skills under `skill/`, following the repository's
+established layout and test conventions.
+
+After completing requested skill or application changes, run appropriate tests,
+review the diff, commit only the files belonging to the current task, and push
+the resulting commit to the configured GitHub remote unless the user explicitly
+asks not to push. Preserve unrelated dirty-worktree changes. For independently
+versioned submodules, commit and push within the submodule first, then update the
+parent repository pointer deliberately.

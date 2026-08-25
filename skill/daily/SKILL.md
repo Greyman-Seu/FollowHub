@@ -33,3 +33,27 @@ When a worker times out, is unavailable, or emits invalid artifacts, keep that p
 ## Reporting
 
 Report the arXiv and RSS status separately, including raw counts, selected counts, published paths, verification result, and any pipeline still pending retries.
+
+## Scheduled Automation
+
+For an unattended workstation, install the user-level systemd timer:
+
+```bash
+python3 skill/daily/scripts/install_scheduled_daily.py
+```
+
+The timer runs at 07:00 Asia/Shanghai and then every two hours through 23:00. The runner:
+
+- uses a per-date file lock so attempts cannot overlap
+- checks local verification artifacts and the actual R2 JSON before starting Codex
+- writes a dated success marker only when `latest`, `daily`, and affected source files all match
+- skips every remaining trigger for that date after success
+- leaves failed or incomplete runs unmarked so the next two-hour trigger retries
+
+Inspect it with:
+
+```bash
+systemctl --user status followhub-daily.timer
+systemctl --user list-timers followhub-daily.timer
+journalctl --user -u followhub-daily.service
+```

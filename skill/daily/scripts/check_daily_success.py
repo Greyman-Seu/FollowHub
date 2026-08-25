@@ -53,14 +53,57 @@ def count_items_for_date(items: Iterable[Mapping[str, Any]], run_date: str) -> i
     return sum(1 for item in items if _item_date(item) == run_date)
 
 
+def _collection_error_kind(message: str) -> str:
+    lowered = message.lower()
+    if "403" in lowered or "forbidden" in lowered:
+        return "forbidden"
+    if "timed out" in lowered or "timeout" in lowered:
+        return "timeout"
+    if "name or service not known" in lowered or "dns" in lowered:
+        return "dns"
+    return "other"
+
+
+def summarize_collection_health(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    health: Dict[str, Any] = {}
+    for source_type in ("wechat", "x", "bilibili", "rss"):
+        rows = [
+            row
+            for row in payload.get("sources") or []
+            if str(row.get("type") or row.get("source_type") or "").strip().lower()
+            == source_type
+        ]
+        if not rows:
+            continue
+        errors = [str(row.get("error") or "") for row in rows if row.get("status") == "error"]
+        error_kinds: Dict[str, int] = {}
+        for message in errors:
+            kind = _collection_error_kind(message)
+            error_kinds[kind] = error_kinds.get(kind, 0) + 1
+        health[source_type] = {
+            "total": len(rows),
+            "ok": sum(row.get("status") == "ok" for row in rows),
+            "error": sum(row.get("status") == "error" for row in rows),
+            "item_count": sum(int(row.get("item_count", 0) or 0) for row in rows),
+            "error_kinds": error_kinds,
+        }
+    return health
+
+
 def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
     arxiv_verify_path = repo / "arxiv-daily-output" / run_date / "verify.json"
     rss_verify_path = repo / "rss-daily-output" / run_date / "verify.json"
     rss_digest_path = repo / "rss-daily-output" / run_date / "daily-digest.json"
+    rss_collect_path = repo / "rss-collect-output" / "{0}-raw.json".format(run_date)
 
     missing = [
         str(path)
-        for path in (arxiv_verify_path, rss_verify_path, rss_digest_path)
+        for path in (
+            arxiv_verify_path,
+            rss_verify_path,
+            rss_digest_path,
+            rss_collect_path,
+        )
         if not path.exists()
     ]
     if missing:
@@ -73,6 +116,15 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
     arxiv_verify = load_json(arxiv_verify_path)
     rss_verify = load_json(rss_verify_path)
     rss_digest = load_json(rss_digest_path)
+    collection_health = summarize_collection_health(load_json(rss_collect_path))
+
+    x_health = collection_health.get("x") or {}
+    if int(x_health.get("total", 0) or 0) > 0 and int(x_health.get("ok", 0) or 0) == 0:
+        return {
+            "ok": False,
+            "reason": "X/Twitter RSS collection is unavailable",
+            "collection_health": collection_health,
+        }
 
     arxiv_ok = bool(arxiv_verify.get("ok", True)) and not list(
         arxiv_verify.get("incomplete_summary_ids") or []
@@ -101,7 +153,7 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
         }
     if sum(counts.values()) <= 0:
         return {"ok": False, "reason": "daily digest contains no selected items"}
-    return {"ok": True, "counts": counts}
+    return {"ok": True, "counts": counts, "collection_health": collection_health}
 
 
 def evaluate_remote_payloads(
@@ -216,13 +268,15 @@ def check_daily_success(repo: Path, run_date: str, config_path: Path) -> Dict[st
     os.environ["FOLLOWHUB_CONFIG"] = str(config_path)
     try:
         remote = fetch_remote_payloads(repo, run_date, local["counts"])
-        return evaluate_remote_payloads(
+        result = evaluate_remote_payloads(
             run_date=run_date,
             expected_counts=local["counts"],
             daily=remote["daily"],
             latest=remote["latest"],
             source_payloads=remote["sources"],
         )
+        result["collection_health"] = local.get("collection_health") or {}
+        return result
     except Exception as exc:
         return {
             "ok": False,

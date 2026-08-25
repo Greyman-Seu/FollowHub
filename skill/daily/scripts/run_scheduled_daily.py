@@ -17,6 +17,16 @@ from typing import Any, Dict, List, Optional
 from check_daily_success import check_daily_success
 
 
+SUCCESS_SCHEMA_VERSION = 2
+DEFAULT_FINAL_RETRY_HOUR = 23
+SOURCE_LABELS = {
+    "arxiv": "arXiv",
+    "wechat": "微信",
+    "x": "X/Twitter",
+    "bilibili": "B站",
+}
+
+
 def write_json_atomic(path: Path, payload: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -56,6 +66,135 @@ def build_codex_command(
     ]
 
 
+def load_json_optional(path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _count_summary(result: Dict[str, Any]) -> str:
+    counts = result.get("counts") or {}
+    parts = [
+        "{0} {1}".format(SOURCE_LABELS[source], int(counts.get(source, 0) or 0))
+        for source in SOURCE_LABELS
+    ]
+    return "，".join(parts)
+
+
+def _x_health_summary(result: Dict[str, Any]) -> str:
+    health = (result.get("collection_health") or {}).get("x") or {}
+    total = int(health.get("total", 0) or 0)
+    if total <= 0:
+        return ""
+    ok = int(health.get("ok", 0) or 0)
+    errors = int(health.get("error", 0) or 0)
+    error_kinds = health.get("error_kinds") or {}
+    details = []
+    for key, label in (("dns", "DNS"), ("timeout", "超时"), ("forbidden", "403"), ("other", "其他")):
+        count = int(error_kinds.get(key, 0) or 0)
+        if count:
+            details.append("{0} {1}".format(label, count))
+    suffix = "（{0}）".format("、".join(details)) if details else ""
+    return "X/Twitter RSS：{0}/{1} 个源可用，{2} 个失败{3}".format(
+        ok, total, errors, suffix
+    )
+
+
+def build_success_message(run_date: str, result: Dict[str, Any], summary_url: str) -> str:
+    total = int(result.get("total_count", sum((result.get("counts") or {}).values())) or 0)
+    lines = [
+        "FollowHub 每日汇总已完成（{0}）".format(run_date),
+        "共 {0} 条：{1}。".format(total, _count_summary(result)),
+    ]
+    x_health = _x_health_summary(result)
+    if x_health:
+        lines.append(x_health + "。")
+    lines.append("查看：{0}".format(summary_url))
+    return "\n".join(lines)
+
+
+def build_failure_message(run_date: str, result: Dict[str, Any], summary_url: str) -> str:
+    reason = str(result.get("reason") or "未知校验失败").strip()
+    lines = [
+        "FollowHub 每日汇总未完成（{0}）".format(run_date),
+        "截至 23:00 最后一次重试仍未通过：{0}。".format(reason),
+    ]
+    x_health = _x_health_summary(result)
+    if x_health:
+        lines.append(x_health + "。")
+    lines.append("已发布的部分内容：{0}".format(summary_url))
+    lines.append("系统会在次日 07:00 重新开始尝试。")
+    return "\n".join(lines)
+
+
+def send_lark_message(
+    *, lark_cli: str, chat_id: str, message: str, idempotency_key: str
+) -> Dict[str, Any]:
+    command = [
+        lark_cli,
+        "im",
+        "+messages-send",
+        "--chat-id",
+        chat_id,
+        "--text",
+        message,
+        "--idempotency-key",
+        idempotency_key,
+        "--as",
+        "bot",
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "error": str(exc)}
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "returncode": proc.returncode,
+            "error": (proc.stderr or proc.stdout or "lark-cli failed").strip()[-1000:],
+        }
+    return {"ok": True}
+
+
+def notify_once(
+    *,
+    notification_path: Path,
+    lark_cli: Optional[str],
+    chat_id: Optional[str],
+    message: str,
+    idempotency_key: str,
+) -> bool:
+    if notification_path.exists():
+        return True
+    if not lark_cli or not chat_id:
+        return False
+    result = send_lark_message(
+        lark_cli=lark_cli,
+        chat_id=chat_id,
+        message=message,
+        idempotency_key=idempotency_key,
+    )
+    if not result.get("ok"):
+        print("FollowHub daily notification failed: {0}".format(result.get("error")), file=sys.stderr)
+        return False
+    write_json_atomic(
+        notification_path,
+        {
+            "sent_at": datetime.now().astimezone().isoformat(),
+            "idempotency_key": idempotency_key,
+        },
+    )
+    return True
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="run-followhub-scheduled-daily")
     parser.add_argument("--repo", required=True)
@@ -64,6 +203,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--codex-bin")
     parser.add_argument("--state-dir")
     parser.add_argument("--date")
+    parser.add_argument("--lark-cli")
+    parser.add_argument("--notify-chat-id")
+    parser.add_argument("--summary-url", default="https://tenstep.top/follow/")
+    parser.add_argument("--final-retry-hour", type=int, default=DEFAULT_FINAL_RETRY_HOUR)
     return parser
 
 
@@ -79,7 +222,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         or Path.home() / ".local" / "state" / "followhub-daily"
     ).expanduser().resolve()
     run_date = args.date or default_run_date()
+    attempt_hour = datetime.now().astimezone().hour
     codex_bin = args.codex_bin or shutil.which("codex")
+    lark_cli = args.lark_cli or shutil.which("lark-cli")
     if not codex_bin:
         raise SystemExit("codex executable not found")
     if not config_path.exists():
@@ -92,6 +237,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     attempt_path = state_dir / "{0}.last-attempt.json".format(run_date)
     output_message_path = state_dir / "{0}.last-message.txt".format(run_date)
     lock_path = state_dir / "{0}.lock".format(run_date)
+    success_notification_path = state_dir / "{0}.success-notified.json".format(run_date)
+    failure_notification_path = state_dir / "{0}.failure-notified.json".format(run_date)
 
     with lock_path.open("a+", encoding="utf-8") as lock_file:
         try:
@@ -100,7 +247,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("FollowHub daily is already running for {0}; skipping.".format(run_date))
             return 0
 
-        if success_path.exists():
+        existing_success = load_json_optional(success_path)
+        if existing_success and existing_success.get("schema_version") == SUCCESS_SCHEMA_VERSION:
+            notify_once(
+                notification_path=success_notification_path,
+                lark_cli=lark_cli,
+                chat_id=args.notify_chat_id,
+                message=build_success_message(run_date, existing_success, args.summary_url),
+                idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+            )
             print("FollowHub daily already succeeded for {0}; skipping.".format(run_date))
             return 0
 
@@ -108,7 +263,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         if precheck.get("ok"):
             precheck["detected_at"] = datetime.now().astimezone().isoformat()
             precheck["source"] = "preflight"
+            precheck["schema_version"] = SUCCESS_SCHEMA_VERSION
             write_json_atomic(success_path, precheck)
+            notify_once(
+                notification_path=success_notification_path,
+                lark_cli=lark_cli,
+                chat_id=args.notify_chat_id,
+                message=build_success_message(run_date, precheck, args.summary_url),
+                idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+            )
             print("Existing successful daily detected for {0}; marker written.".format(run_date))
             return 0
 
@@ -146,11 +309,28 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "detected_at": finished_at,
                     "source": "scheduled-run",
                     "codex_returncode": proc.returncode,
+                    "schema_version": SUCCESS_SCHEMA_VERSION,
                 }
             )
             write_json_atomic(success_path, success)
+            notify_once(
+                notification_path=success_notification_path,
+                lark_cli=lark_cli,
+                chat_id=args.notify_chat_id,
+                message=build_success_message(run_date, success, args.summary_url),
+                idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+            )
             print("FollowHub daily succeeded for {0}.".format(run_date))
             return 0
+
+        if attempt_hour >= args.final_retry_hour:
+            notify_once(
+                notification_path=failure_notification_path,
+                lark_cli=lark_cli,
+                chat_id=args.notify_chat_id,
+                message=build_failure_message(run_date, postcheck, args.summary_url),
+                idempotency_key="followhub-{0}-failure".format(run_date.replace("-", "")),
+            )
 
         print(
             "FollowHub daily is still pending for {0}: {1}".format(

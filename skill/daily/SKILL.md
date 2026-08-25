@@ -46,9 +46,19 @@ The timer runs at 07:00 Asia/Shanghai and then every two hours through 23:00. Th
 
 - uses a per-date file lock so attempts cannot overlap
 - checks local verification artifacts and the actual R2 JSON before starting Codex
+- treats all configured X/Twitter RSS feeds failing acquisition as incomplete, even if other sources published successfully
 - writes a dated success marker only when `latest`, `daily`, and affected source files all match
 - skips every remaining trigger for that date after success
 - leaves failed or incomplete runs unmarked so the next two-hour trigger retries
+- can send one bot notification with the Follow link after success and one failure notification after the final 23:00 retry
+
+To enable notifications for a P2P chat:
+
+```bash
+python3 skill/daily/scripts/install_scheduled_daily.py \
+  --notify-chat-id <oc_chat_id> \
+  --summary-url https://tenstep.top/follow/
+```
 
 Inspect it with:
 

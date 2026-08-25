@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -52,6 +53,29 @@ def digest(date, counts):
 
 
 class DailySuccessEvaluationTest(unittest.TestCase):
+    def test_all_x_sources_failing_is_unhealthy(self):
+        health = checker.summarize_collection_health(
+            {
+                "sources": [
+                    {
+                        "type": "x",
+                        "status": "error",
+                        "error": "403 Client Error: Forbidden",
+                        "item_count": 0,
+                    },
+                    {
+                        "type": "x",
+                        "status": "error",
+                        "error": "Connection timed out",
+                        "item_count": 0,
+                    },
+                ]
+            }
+        )
+        self.assertEqual(0, health["x"]["ok"])
+        self.assertEqual(2, health["x"]["error"])
+        self.assertEqual({"forbidden": 1, "timeout": 1}, health["x"]["error_kinds"])
+
     def test_matching_remote_payloads_succeed(self):
         run_date = "2026-08-26"
         counts = {"arxiv": 3, "wechat": 2, "x": 0, "bilibili": 0}
@@ -121,6 +145,56 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("2026-08-26", prompt)
         self.assertIn("Run daily.", prompt)
 
+    def test_success_message_contains_counts_and_link(self):
+        message = runner.build_success_message(
+            "2026-08-26",
+            {
+                "counts": {"arxiv": 3, "wechat": 2, "x": 1, "bilibili": 0},
+                "total_count": 6,
+                "collection_health": {"x": {"total": 3, "ok": 2, "error": 1}},
+            },
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("共 6 条", message)
+        self.assertIn("X/Twitter 1", message)
+        self.assertIn("https://tenstep.top/follow/", message)
+
+    def test_failure_message_explains_x_outage(self):
+        message = runner.build_failure_message(
+            "2026-08-26",
+            {
+                "reason": "X/Twitter RSS collection is unavailable",
+                "collection_health": {
+                    "x": {
+                        "total": 99,
+                        "ok": 0,
+                        "error": 99,
+                        "error_kinds": {"dns": 42, "timeout": 38, "forbidden": 19},
+                    }
+                },
+            },
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("截至 23:00", message)
+        self.assertIn("0/99", message)
+        self.assertIn("DNS 42", message)
+
+    @mock.patch.object(runner.subprocess, "run")
+    def test_lark_notification_uses_bot_chat_message(self, run):
+        run.return_value = mock.Mock(returncode=0, stdout="{}", stderr="")
+        result = runner.send_lark_message(
+            lark_cli="/opt/lark-cli",
+            chat_id="oc_test",
+            message="done",
+            idempotency_key="followhub-20260826-success",
+        )
+        self.assertTrue(result["ok"])
+        command = run.call_args.args[0]
+        self.assertEqual("/opt/lark-cli", command[0])
+        self.assertIn("oc_test", command)
+        self.assertIn("--as", command)
+        self.assertIn("bot", command)
+
 
 class SystemdUnitTest(unittest.TestCase):
     def test_timer_has_two_hour_checks_from_seven(self):
@@ -138,6 +212,24 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("WorkingDirectory=/srv/FollowHub", service)
         self.assertIn("FOLLOWHUB_CONFIG=/srv/FollowHub/followhub.yaml", service)
         self.assertIn("TimeoutStartSec=1h50min", service)
+
+    def test_service_passes_notification_and_bridge_context(self):
+        service = installer.build_service_unit(
+            Path("/srv/FollowHub"),
+            Path("/opt/codex"),
+            Path("/srv/FollowHub/followhub.yaml"),
+            lark_cli=Path("/opt/lark-cli"),
+            notify_chat_id="oc_test",
+            summary_url="https://tenstep.top/follow/",
+            channel_environment={
+                "LARK_CHANNEL": "1",
+                "LARK_CHANNEL_PROFILE": "daily-profile",
+            },
+        )
+        self.assertIn("--notify-chat-id oc_test", service)
+        self.assertIn("--summary-url https://tenstep.top/follow/", service)
+        self.assertIn('Environment="LARK_CHANNEL=1"', service)
+        self.assertIn('Environment="LARK_CHANNEL_PROFILE=daily-profile"', service)
 
 
 if __name__ == "__main__":

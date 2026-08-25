@@ -11,6 +11,7 @@ Requirements:
    - `follow/daily/YYYY-MM-DD.json`
    - every affected `follow/sources/*.json`
 6. Write the normal arXiv and RSS verification artifacts. Do not claim success until local and remote counts match for every source.
-7. Preserve unrelated dirty-worktree changes. Do not publish fallback-quality Chinese text.
+7. Treat a configured source family as unavailable when every configured feed in that family fails acquisition. In particular, zero selected X items is valid only when X acquisition itself succeeded; all X/Twitter RSS feeds failing is an incomplete run that must be diagnosed or retried.
+8. Preserve unrelated dirty-worktree changes. Do not publish fallback-quality Chinese text.
 
 If the arXiv listing for the requested date is not available yet, or any required worker/artifact/verification remains incomplete, leave the run pending and exit without claiming success. The system timer will retry two hours later.

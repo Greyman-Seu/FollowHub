@@ -19,6 +19,18 @@ def load_json(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def normalize_source_names(values: Optional[Iterable[str]]) -> List[str]:
+    normalized: List[str] = []
+    seen = set()
+    for value in values or ():
+        source = str(value or "").strip().lower()
+        if not source or source in seen:
+            continue
+        seen.add(source)
+        normalized.append(source)
+    return normalized
+
+
 def _integer_counts(value: Mapping[str, Any]) -> Dict[str, int]:
     return {source: int(value.get(source, 0) or 0) for source in SOURCE_TYPES}
 
@@ -64,6 +76,103 @@ def _collection_error_kind(message: str) -> str:
     return "other"
 
 
+def _clean_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _has_verified_wechat_body(item: Mapping[str, Any]) -> bool:
+    if str(item.get("source_type") or "").strip().lower() != "wechat":
+        return True
+    fetch_status = str(item.get("fetch_status") or "").strip().lower()
+    content_text = _clean_text(item.get("content_text") or "")
+    summary = _clean_text(item.get("summary") or "")
+    title = _clean_text(item.get("title") or "")
+    if fetch_status == "fetched-html":
+        return bool(content_text)
+    if fetch_status != "preserved":
+        return False
+    return bool(content_text) and len(content_text) >= 200 and content_text not in {title, summary}
+
+
+def summarize_fetch_health(payload: Mapping[str, Any]) -> Dict[str, Any]:
+    items = list(payload.get("items") or [])
+    by_source: Dict[str, Dict[str, Any]] = {}
+    for row in items:
+        if not isinstance(row, Mapping):
+            continue
+        source = str(row.get("source_type") or "rss").strip().lower()
+        stats = by_source.setdefault(
+            source,
+            {
+                "item_count": 0,
+                "fetch_status_counts": {},
+                "verified_body_count": 0,
+                "fallback_only_count": 0,
+            },
+        )
+        stats["item_count"] += 1
+        status = str(row.get("fetch_status") or "missing").strip() or "missing"
+        status_counts = stats["fetch_status_counts"]
+        status_counts[status] = int(status_counts.get(status, 0) or 0) + 1
+        if source == "wechat":
+            if _has_verified_wechat_body(row):
+                stats["verified_body_count"] += 1
+            else:
+                stats["fallback_only_count"] += 1
+    return by_source
+
+
+def _collect_digest_items(payload: Mapping[str, Any]) -> List[Mapping[str, Any]]:
+    stories = payload.get("stories")
+    if isinstance(stories, list) and stories:
+        return [row for row in stories if isinstance(row, Mapping)]
+    items: List[Mapping[str, Any]] = []
+    for section in payload.get("sections") or []:
+        if not isinstance(section, Mapping):
+            continue
+        for row in section.get("items") or []:
+            if isinstance(row, Mapping):
+                items.append(row)
+    return items
+
+
+def invalid_selected_wechat_items(
+    digest_payload: Mapping[str, Any], fetch_payload: Mapping[str, Any]
+) -> List[Dict[str, str]]:
+    fetch_by_id = {}
+    for row in fetch_payload.get("items") or []:
+        if not isinstance(row, Mapping):
+            continue
+        row_id = str(row.get("id") or "").strip()
+        if row_id:
+            fetch_by_id[row_id] = row
+    invalid: List[Dict[str, str]] = []
+    for row in _collect_digest_items(digest_payload):
+        if str(row.get("source_type") or "").strip().lower() != "wechat":
+            continue
+        row_id = str(row.get("id") or row.get("representative_item_id") or "").strip()
+        fetched = fetch_by_id.get(row_id, {})
+        if not fetched:
+            invalid.append(
+                {
+                    "id": row_id,
+                    "title": str(row.get("title") or "").strip(),
+                    "fetch_status": "missing",
+                }
+            )
+            continue
+        if _has_verified_wechat_body(fetched):
+            continue
+        invalid.append(
+            {
+                "id": row_id,
+                "title": str(row.get("title") or "").strip(),
+                "fetch_status": str(fetched.get("fetch_status") or "missing").strip() or "missing",
+            }
+        )
+    return invalid
+
+
 def summarize_collection_health(payload: Mapping[str, Any]) -> Dict[str, Any]:
     health: Dict[str, Any] = {}
     for source_type in ("wechat", "x", "bilibili", "rss"):
@@ -90,11 +199,17 @@ def summarize_collection_health(payload: Mapping[str, Any]) -> Dict[str, Any]:
     return health
 
 
-def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
+def expected_local_counts(
+    repo: Path,
+    run_date: str,
+    *,
+    allow_unavailable_sources: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
     arxiv_verify_path = repo / "arxiv-daily-output" / run_date / "verify.json"
     rss_verify_path = repo / "rss-daily-output" / run_date / "verify.json"
     rss_digest_path = repo / "rss-daily-output" / run_date / "daily-digest.json"
     rss_collect_path = repo / "rss-collect-output" / "{0}-raw.json".format(run_date)
+    rss_fetch_path = repo / "rss-daily-output" / run_date / "fetch" / "fetched_items.json"
 
     missing = [
         str(path)
@@ -103,6 +218,7 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
             rss_verify_path,
             rss_digest_path,
             rss_collect_path,
+            rss_fetch_path,
         )
         if not path.exists()
     ]
@@ -116,15 +232,23 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
     arxiv_verify = load_json(arxiv_verify_path)
     rss_verify = load_json(rss_verify_path)
     rss_digest = load_json(rss_digest_path)
+    rss_fetch = load_json(rss_fetch_path)
     collection_health = summarize_collection_health(load_json(rss_collect_path))
+    fetch_health = summarize_fetch_health(rss_fetch)
+
+    allowed_unavailable_sources = set(normalize_source_names(allow_unavailable_sources))
+    ignored_unavailable_sources: List[str] = []
 
     x_health = collection_health.get("x") or {}
     if int(x_health.get("total", 0) or 0) > 0 and int(x_health.get("ok", 0) or 0) == 0:
-        return {
-            "ok": False,
-            "reason": "X/Twitter RSS collection is unavailable",
-            "collection_health": collection_health,
-        }
+        if "x" in allowed_unavailable_sources:
+            ignored_unavailable_sources.append("x")
+        else:
+            return {
+                "ok": False,
+                "reason": "X/Twitter RSS collection is unavailable",
+                "collection_health": collection_health,
+            }
 
     arxiv_ok = bool(arxiv_verify.get("ok", True)) and not list(
         arxiv_verify.get("incomplete_summary_ids") or []
@@ -138,8 +262,43 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
             "rss_ok": rss_ok,
         }
 
+    wechat_fetch = fetch_health.get("wechat") or {}
+    wechat_item_count = int(wechat_fetch.get("item_count", 0) or 0)
+    verified_body_count = int(wechat_fetch.get("verified_body_count", 0) or 0)
+    if wechat_item_count > 0 and verified_body_count <= 0:
+        return {
+            "ok": False,
+            "reason": "WeChat articles did not yield verified article bodies",
+            "fetch_health": fetch_health,
+        }
+
+    invalid_wechat = invalid_selected_wechat_items(rss_digest, rss_fetch)
+    if invalid_wechat:
+        return {
+            "ok": False,
+            "reason": "Published WeChat items appear to rely only on title/summary fallback",
+            "fetch_health": fetch_health,
+            "invalid_wechat_items": invalid_wechat[:10],
+        }
+
     counts = _integer_counts(rss_digest.get("counts") or {})
     counts["arxiv"] = int(arxiv_verify.get("daily_item_count", 0) or 0)
+    try:
+        local_section_counts = _section_counts(rss_digest)
+    except ValueError as exc:
+        return {
+            "ok": False,
+            "reason": str(exc),
+        }
+    expected_section_counts = {source: counts[source] for source in SOURCE_TYPES if source != "arxiv"}
+    actual_section_counts = {source: int(local_section_counts.get(source, 0) or 0) for source in expected_section_counts}
+    if actual_section_counts != expected_section_counts:
+        return {
+            "ok": False,
+            "reason": "local RSS digest counts do not match section payload",
+            "rss_digest_counts": expected_section_counts,
+            "rss_digest_section_counts": actual_section_counts,
+        }
     rss_story_count = int(
         ((rss_verify.get("content_checks") or {}).get("story_count", 0)) or 0
     )
@@ -153,7 +312,15 @@ def expected_local_counts(repo: Path, run_date: str) -> Dict[str, Any]:
         }
     if sum(counts.values()) <= 0:
         return {"ok": False, "reason": "daily digest contains no selected items"}
-    return {"ok": True, "counts": counts, "collection_health": collection_health}
+    result: Dict[str, Any] = {
+        "ok": True,
+        "counts": counts,
+        "collection_health": collection_health,
+        "fetch_health": fetch_health,
+    }
+    if ignored_unavailable_sources:
+        result["ignored_unavailable_sources"] = ignored_unavailable_sources
+    return result
 
 
 def evaluate_remote_payloads(
@@ -260,8 +427,18 @@ def fetch_remote_payloads(
     return {"daily": daily, "latest": latest, "sources": sources}
 
 
-def check_daily_success(repo: Path, run_date: str, config_path: Path) -> Dict[str, Any]:
-    local = expected_local_counts(repo, run_date)
+def check_daily_success(
+    repo: Path,
+    run_date: str,
+    config_path: Path,
+    *,
+    allow_unavailable_sources: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    local = expected_local_counts(
+        repo,
+        run_date,
+        allow_unavailable_sources=allow_unavailable_sources,
+    )
     if not local.get("ok"):
         return local
 
@@ -276,6 +453,10 @@ def check_daily_success(repo: Path, run_date: str, config_path: Path) -> Dict[st
             source_payloads=remote["sources"],
         )
         result["collection_health"] = local.get("collection_health") or {}
+        if local.get("ignored_unavailable_sources"):
+            result["ignored_unavailable_sources"] = list(
+                local.get("ignored_unavailable_sources") or []
+            )
         return result
     except Exception as exc:
         return {
@@ -291,6 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--date", required=True)
     parser.add_argument("--config")
+    parser.add_argument("--allow-unavailable-source", action="append", default=[])
     return parser
 
 
@@ -298,7 +480,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     repo = Path(args.repo).expanduser().resolve()
     config_path = Path(args.config or repo / "followhub.yaml").expanduser().resolve()
-    result = check_daily_success(repo, args.date, config_path)
+    result = check_daily_success(
+        repo,
+        args.date,
+        config_path,
+        allow_unavailable_sources=args.allow_unavailable_source,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("ok") else 1
 

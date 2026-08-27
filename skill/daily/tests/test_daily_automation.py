@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -93,6 +94,152 @@ class DailySuccessEvaluationTest(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(5, result["total_count"])
 
+    def test_expected_local_counts_can_ignore_x_unavailable(self):
+        run_date = "2026-08-26"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            (repo / "arxiv-daily-output" / run_date).mkdir(parents=True)
+            (repo / "rss-daily-output" / run_date / "fetch").mkdir(parents=True)
+            (repo / "rss-collect-output").mkdir(parents=True)
+
+            (repo / "arxiv-daily-output" / run_date / "verify.json").write_text(
+                json.dumps({"ok": True, "daily_item_count": 2, "incomplete_summary_ids": []}),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "verify.json").write_text(
+                json.dumps({"ok": True, "content_checks": {"story_count": 1}}),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "daily-digest.json").write_text(
+                json.dumps(
+                    {
+                        "counts": {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0},
+                        "sections": [
+                            {
+                                "source_type": "wechat",
+                                "title": "wechat",
+                                "count": 1,
+                                "items": [
+                                    {
+                                        "id": "wechat:1",
+                                        "source_type": "wechat",
+                                        "date": run_date,
+                                        "title": "标题",
+                                        "summary": "摘要",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (repo / "rss-collect-output" / "{0}-raw.json".format(run_date)).write_text(
+                json.dumps(
+                    {
+                        "sources": [
+                            {"type": "wechat", "status": "ok", "item_count": 1},
+                            {"type": "x", "status": "error", "error": "410 Client Error: Gone", "item_count": 0},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "fetch" / "fetched_items.json").write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "id": "wechat:1",
+                                "source_type": "wechat",
+                                "fetch_status": "fetched-html",
+                                "title": "标题",
+                                "summary": "摘要",
+                                "content_text": "这是一段足够长的微信正文内容，用来通过已验证正文检查。",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = checker.expected_local_counts(
+                repo,
+                run_date,
+                allow_unavailable_sources=["x"],
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(["x"], result["ignored_unavailable_sources"])
+
+    def test_expected_local_counts_rejects_wechat_fallback_only_publish(self):
+        run_date = "2026-08-26"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            (repo / "arxiv-daily-output" / run_date).mkdir(parents=True)
+            (repo / "rss-daily-output" / run_date / "fetch").mkdir(parents=True)
+            (repo / "rss-collect-output").mkdir(parents=True)
+
+            (repo / "arxiv-daily-output" / run_date / "verify.json").write_text(
+                json.dumps({"ok": True, "daily_item_count": 2, "incomplete_summary_ids": []}),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "verify.json").write_text(
+                json.dumps({"ok": True, "content_checks": {"story_count": 1}}),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "daily-digest.json").write_text(
+                json.dumps(
+                    {
+                        "counts": {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0},
+                        "sections": [
+                            {
+                                "source_type": "wechat",
+                                "title": "wechat",
+                                "count": 1,
+                                "items": [
+                                    {
+                                        "id": "wechat:1",
+                                        "source_type": "wechat",
+                                        "date": run_date,
+                                        "title": "微信标题",
+                                        "summary": "摘要",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (repo / "rss-collect-output" / "{0}-raw.json".format(run_date)).write_text(
+                json.dumps({"sources": [{"type": "wechat", "status": "ok", "item_count": 1}]}),
+                encoding="utf-8",
+            )
+            (repo / "rss-daily-output" / run_date / "fetch" / "fetched_items.json").write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "id": "wechat:1",
+                                "source_type": "wechat",
+                                "fetch_status": "fallback-blocked",
+                                "title": "微信标题",
+                                "summary": "摘要",
+                                "content_text": "摘要",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = checker.expected_local_counts(repo, run_date)
+
+        self.assertFalse(result["ok"])
+        self.assertIn("WeChat", result["reason"])
+        self.assertEqual(0, result["fetch_health"]["wechat"]["verified_body_count"])
+
     def test_missing_same_day_source_update_fails(self):
         run_date = "2026-08-26"
         counts = {"arxiv": 1, "wechat": 1, "x": 0, "bilibili": 0}
@@ -179,6 +326,35 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("0/99", message)
         self.assertIn("DNS 42", message)
 
+    def test_failure_message_explains_wechat_fetch_fallback(self):
+        message = runner.build_failure_message(
+            "2026-08-26",
+            {
+                "reason": "Published WeChat items appear to rely only on title/summary fallback",
+                "fetch_health": {
+                    "wechat": {
+                        "item_count": 4,
+                        "verified_body_count": 0,
+                        "fallback_only_count": 4,
+                        "fetch_status_counts": {"fallback-blocked": 4},
+                    }
+                },
+            },
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("微信正文抓取", message)
+        self.assertIn("仅回退 4", message)
+        self.assertIn("fallback-blocked 4", message)
+
+    def test_pending_message_mentions_retry(self):
+        message = runner.build_pending_message(
+            "2026-08-26",
+            {"reason": "missing local verification artifacts"},
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("仍在重试", message)
+        self.assertIn("下一次定时触发", message)
+
     @mock.patch.object(runner.subprocess, "run")
     def test_lark_notification_uses_bot_chat_message(self, run):
         run.return_value = mock.Mock(returncode=0, stdout="{}", stderr="")
@@ -226,6 +402,8 @@ class SystemdUnitTest(unittest.TestCase):
             lark_cli=Path("/opt/lark-cli"),
             notify_chat_id="oc_test",
             summary_url="https://tenstep.top/follow/",
+            allow_unavailable_sources=["x"],
+            notify_pending_once=True,
             channel_environment={
                 "LARK_CHANNEL": "1",
                 "LARK_CHANNEL_PROFILE": "daily-profile",
@@ -233,6 +411,8 @@ class SystemdUnitTest(unittest.TestCase):
         )
         self.assertIn("--notify-chat-id oc_test", service)
         self.assertIn("--summary-url https://tenstep.top/follow/", service)
+        self.assertIn("--allow-unavailable-source x", service)
+        self.assertIn("--notify-pending-once", service)
         self.assertIn('Environment="LARK_CHANNEL=1"', service)
         self.assertIn('Environment="LARK_CHANNEL_PROFILE=daily-profile"', service)
 

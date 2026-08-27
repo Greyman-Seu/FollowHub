@@ -254,6 +254,50 @@ class RssDailySkillTests(unittest.TestCase):
         self.assertEqual(len(payload["items"]), 1)
         self.assertFalse(payload["items"][0]["include_in_digest"])
 
+    def test_has_verified_wechat_body_rejects_fallback_blocked(self):
+        self.assertFalse(
+            self.module.has_verified_wechat_body(
+                {
+                    "source_type": "wechat",
+                    "fetch_status": "fallback-blocked",
+                    "title": "微信标题",
+                    "summary": "摘要",
+                    "content_text": "摘要",
+                }
+            )
+        )
+
+    def test_has_verified_wechat_body_accepts_fetched_html(self):
+        self.assertTrue(
+            self.module.has_verified_wechat_body(
+                {
+                    "source_type": "wechat",
+                    "fetch_status": "fetched-html",
+                    "title": "微信标题",
+                    "summary": "摘要",
+                    "content_text": "这是一段真正抓到的微信正文，长度明显长于标题和摘要。",
+                }
+            )
+        )
+
+    def test_selected_wechat_without_verified_body_fails(self):
+        payload = {
+            "items": [
+                {
+                    "id": "wechat:1",
+                    "source_type": "wechat",
+                    "include_in_digest": True,
+                    "fetch_status": "fallback-blocked",
+                    "title": "微信标题",
+                    "summary": "摘要",
+                    "content_text": "摘要",
+                }
+            ]
+        }
+        with self.assertRaises(SystemExit) as exc:
+            self.module.ensure_selected_wechat_have_verified_body(payload)
+        self.assertIn("missing verified article bodies", str(exc.exception))
+
     def test_infer_domains_handles_chinese_technical_signals(self):
         entry = {
             "title": "腾讯混元最新开源：一套RL框架打通多个模态",

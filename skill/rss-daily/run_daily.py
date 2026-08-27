@@ -1086,7 +1086,8 @@ def build_filter_reviewer_prompt() -> str:
     return (
         "Review this RSS item for final daily digest inclusion. "
         "Use content, recent story history, and history_hint together. "
-        "Exclude obvious repeats, include strong in-scope new items, and include followups only when they add signal beyond prior coverage."
+        "Exclude obvious repeats, include strong in-scope new items, and include followups only when they add signal beyond prior coverage. "
+        "For WeChat, do not include items whose fetch_status shows title/summary fallback or block-page fallback instead of a verified article body."
     )
 
 
@@ -1106,6 +1107,7 @@ def build_filter_reviewer_checklist() -> List[str]:
         "If marked followup, does it materially advance the prior story?",
         "Do source overlap, publish count, or prior mention count raise the inclusion bar?",
         "Should the item be excluded even if it matches scope because it is low-signal or repetitive?",
+        "For WeChat, was the article body actually fetched instead of falling back to title/summary text?",
     ]
 
 
@@ -1333,6 +1335,53 @@ def validate_filter_results(path: Path, allowed_ids: List[str]) -> Dict[str, Any
     if missing:
         fail(f"filter_results.json is missing decisions for {len(missing)} candidate items.")
     return payload
+
+
+def _clean_body_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def has_verified_wechat_body(entry: Dict[str, Any]) -> bool:
+    if str(entry.get("source_type") or "").strip().lower() != "wechat":
+        return True
+    fetch_status = str(entry.get("fetch_status") or "").strip().lower()
+    content_text = _clean_body_text(entry.get("content_text") or "")
+    summary = _clean_body_text(entry.get("summary") or "")
+    title = _clean_body_text(entry.get("title") or "")
+    if fetch_status == "fetched-html":
+        return bool(content_text)
+    if fetch_status != "preserved":
+        return False
+    return bool(content_text) and len(content_text) >= 200 and content_text not in {title, summary}
+
+
+def ensure_selected_wechat_have_verified_body(filter_payload: Dict[str, Any]) -> None:
+    invalid = []
+    for entry in list(filter_payload.get("items") or []):
+        if not bool(entry.get("include_in_digest", False)):
+            continue
+        if str(entry.get("source_type") or "").strip().lower() != "wechat":
+            continue
+        if has_verified_wechat_body(entry):
+            continue
+        invalid.append(
+            {
+                "id": str(entry.get("id") or ""),
+                "title": str(entry.get("title") or "").strip(),
+                "fetch_status": str(entry.get("fetch_status") or "").strip() or "missing",
+            }
+        )
+    if not invalid:
+        return
+    sample = "；".join(
+        "{0}（{1}）".format(item["title"] or item["id"], item["fetch_status"])
+        for item in invalid[:3]
+    )
+    fail(
+        "Selected WeChat items are missing verified article bodies. "
+        "Do not publish title/summary fallback as production content. "
+        "Invalid items: {0} 条（例如：{1}）".format(len(invalid), sample)
+    )
 
 
 def auto_prefilter(clustered_payload: Dict[str, Any], focus: Dict[str, Any], output_path: Path) -> Dict[str, Any]:
@@ -1761,6 +1810,8 @@ def command_daily(args: argparse.Namespace) -> int:
             )
     filter_payload = validate_filter_results(paths.filter_results, [str(entry.get("id") or "") for entry in filter_candidates])
     stage_log("filter", "results-loaded", results_path=str(paths.filter_results), item_count=len(filter_payload.get("items") or []))
+    if not args.auto_workers:
+        ensure_selected_wechat_have_verified_body(filter_payload)
 
     enrich_payload = run_enrich(filter_payload, paths.enrich_results)
     if not args.auto_workers:

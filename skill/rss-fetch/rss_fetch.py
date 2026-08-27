@@ -79,7 +79,7 @@ def fetch_item_content(item: Dict[str, Any], *, request_timeout_seconds: int = 3
         row["content_text"] = existing
         row["fetch_status"] = "preserved"
         return row
-    if source_type in {"x", "wechat"} and cleaned_summary:
+    if source_type == "x" and cleaned_summary:
         row["content_text"] = cleaned_summary
         row["fetch_status"] = "preserved-summary"
         return row

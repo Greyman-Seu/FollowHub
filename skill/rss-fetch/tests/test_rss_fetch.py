@@ -97,7 +97,7 @@ class RssFetchSkillTests(unittest.TestCase):
         self.assertEqual(fetched["content_text"], "Hello world")
         self.assertEqual(fetched["fetch_status"], "preserved-summary")
 
-    def test_fetch_item_content_preserves_clean_summary_for_wechat(self):
+    def test_fetch_item_content_fetches_wechat_html_even_with_summary(self):
         item = {
             "id": "wechat:1",
             "source_type": "wechat",
@@ -105,11 +105,28 @@ class RssFetchSkillTests(unittest.TestCase):
             "summary": "<p>解决方案或许在于「循环」。</p>",
             "content_text": "",
         }
-        with mock.patch.object(self.module, "fetch_text") as mocked_fetch:
+        with mock.patch.object(
+            self.module,
+            "fetch_text",
+            return_value="<html><body><article><p>Full article body</p></article></body></html>",
+        ) as mocked_fetch:
             fetched = self.module.fetch_item_content(item)
-        mocked_fetch.assert_not_called()
+        mocked_fetch.assert_called_once()
+        self.assertEqual(fetched["content_text"], "Full article body")
+        self.assertEqual(fetched["fetch_status"], "fetched-html")
+
+    def test_fetch_item_content_falls_back_to_summary_for_wechat_on_error(self):
+        item = {
+            "id": "wechat:1",
+            "source_type": "wechat",
+            "url": "https://mp.weixin.qq.com/s?id=1",
+            "summary": "<p>解决方案或许在于「循环」。</p>",
+            "content_text": "",
+        }
+        with mock.patch.object(self.module, "fetch_text", side_effect=RuntimeError("boom")):
+            fetched = self.module.fetch_item_content(item)
         self.assertEqual(fetched["content_text"], "解决方案或许在于「循环」。")
-        self.assertEqual(fetched["fetch_status"], "preserved-summary")
+        self.assertEqual(fetched["fetch_status"], "fallback-summary")
 
     def test_fetch_item_content_falls_back_when_wechat_block_page_detected(self):
         item = {

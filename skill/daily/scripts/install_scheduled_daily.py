@@ -34,6 +34,16 @@ def _unit_value(value: object) -> str:
     return text.replace("%", "%%")
 
 
+def _repeatable_cli_arguments(flag: str, values: Optional[List[str]]) -> str:
+    parts: List[str] = []
+    for value in values or []:
+        text = str(value or "").strip().lower()
+        if not text:
+            continue
+        parts.append(" {0} {1}".format(flag, _unit_value(text)))
+    return "".join(parts)
+
+
 def build_service_unit(
     repo: Path,
     codex_bin: Path,
@@ -43,6 +53,8 @@ def build_service_unit(
     lark_cli: Optional[Path] = None,
     notify_chat_id: Optional[str] = None,
     summary_url: str = "https://tenstep.top/follow/",
+    allow_unavailable_sources: Optional[List[str]] = None,
+    notify_pending_once: bool = False,
     channel_environment: Optional[Dict[str, str]] = None,
 ) -> str:
     runner = repo / "skill" / "daily" / "scripts" / "run_scheduled_daily.py"
@@ -68,6 +80,11 @@ def build_service_unit(
             _unit_value(notify_chat_id),
             _unit_value(summary_url),
         )
+    optional_source_arguments = _repeatable_cli_arguments(
+        "--allow-unavailable-source",
+        allow_unavailable_sources,
+    )
+    pending_argument = " --notify-pending-once" if notify_pending_once else ""
     return """[Unit]
 Description=Run FollowHub daily production update
 After=network-online.target
@@ -79,7 +96,7 @@ WorkingDirectory={repo}
 Environment="TZ=Asia/Shanghai"
 Environment="FOLLOWHUB_CONFIG={config}"
 {channel_environment}
-ExecStart=/usr/bin/python3 {runner} --repo {repo} --config {config} --codex-bin {codex}{notify_arguments}
+ExecStart=/usr/bin/python3 {runner} --repo {repo} --config {config} --codex-bin {codex}{notify_arguments}{optional_source_arguments}{pending_argument}
 TimeoutStartSec=1h50min
 Nice=5
 """.format(
@@ -88,6 +105,8 @@ Nice=5
         runner=_unit_value(runner),
         codex=_unit_value(codex_bin),
         notify_arguments=notify_arguments,
+        optional_source_arguments=optional_source_arguments,
+        pending_argument=pending_argument,
         channel_environment="\n".join(environment_lines),
     )
 
@@ -129,6 +148,8 @@ def install(
     lark_cli: Optional[Path] = None,
     notify_chat_id: Optional[str] = None,
     summary_url: str = "https://tenstep.top/follow/",
+    allow_unavailable_sources: Optional[List[str]] = None,
+    notify_pending_once: bool = False,
     channel_environment: Optional[Dict[str, str]] = None,
     enable: bool = True,
 ) -> Dict[str, str]:
@@ -145,6 +166,8 @@ def install(
             lark_cli=lark_cli,
             notify_chat_id=notify_chat_id,
             summary_url=summary_url,
+            allow_unavailable_sources=allow_unavailable_sources,
+            notify_pending_once=notify_pending_once,
             channel_environment=channel_environment,
         ),
     )
@@ -164,6 +187,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lark-cli")
     parser.add_argument("--notify-chat-id")
     parser.add_argument("--summary-url", default="https://tenstep.top/follow/")
+    parser.add_argument("--allow-unavailable-source", action="append", default=[])
+    parser.add_argument("--notify-pending-once", action="store_true")
     parser.add_argument("--no-enable", action="store_true")
     return parser
 
@@ -195,6 +220,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         lark_cli=lark_cli,
         notify_chat_id=args.notify_chat_id,
         summary_url=args.summary_url,
+        allow_unavailable_sources=args.allow_unavailable_source,
+        notify_pending_once=bool(args.notify_pending_once),
         channel_environment={
             key: os.environ[key]
             for key in LARK_CHANNEL_ENVIRONMENT
@@ -212,6 +239,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "node_bin": str(node_bin),
                 "notifications": bool(args.notify_chat_id),
                 "summary_url": args.summary_url if args.notify_chat_id else None,
+                "allow_unavailable_sources": list(args.allow_unavailable_source or []),
+                "notify_pending_once": bool(args.notify_pending_once),
             },
             ensure_ascii=False,
             indent=2,

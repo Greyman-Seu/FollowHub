@@ -1,6 +1,6 @@
 ---
 name: arxiv-to-wiki
-description: Use when one or more arXiv papers should be turned into high-quality llm-wiki entries through the arxiv-to-wiki -> paper-analyze -> llm-wiki pipeline, with post-write completeness checks, optional batch subagent parallelism, and optional website/R2 sync.
+description: Use when one or more arXiv papers should be turned into high-quality llm-wiki entries through the arxiv-to-wiki, paper-analyze, and llm-wiki pipeline, with post-write completeness checks and default publication to the R2 package and public wiki page unless the user explicitly opts out.
 ---
 
 # arxiv-to-wiki
@@ -55,7 +55,7 @@ Optional:
 - output mode
 - whether to preview first
 - whether to reorganize the wiki after ingest
-- whether to publish website-facing data after ingest
+- an explicit publication opt-out such as `不发布`, `仅写入本地`, `只做草稿`, or `不要同步网站/R2`
 
 ## Modes
 
@@ -103,9 +103,15 @@ arxiv-to-wiki
 -> paper-analyze
 -> llm-wiki
 -> completeness-check loop
+-> validate wiki
+-> build wiki package
+-> package completeness-check loop
+-> publish package to R2
+-> refresh the public wiki data/page
+-> verify the package and public source URLs
 ```
 
-This is the default path for one new paper. The run is not complete until the source note and package-facing fields pass the completeness check.
+This is the default path for one new paper. Publishing is opt-out, not opt-in: do not ask whether to publish. The run is not complete until the source note and package-facing fields pass their checks, the package is published, and the public source page is reachable.
 
 ## Quality Standard
 
@@ -125,7 +131,7 @@ This means:
 
 If the batch is too large to maintain that quality, reduce batch size or concurrency instead of lowering standards.
 
-## Optional Extended Pipeline
+## Optional Structure-Maintenance Step
 
 ```text
 arxiv-to-wiki
@@ -133,12 +139,15 @@ arxiv-to-wiki
 -> llm-wiki
 -> completeness-check loop
 -> update-wiki
+-> validate wiki
 -> build package
 -> package completeness-check loop
+-> publish package to R2
 -> publish-wiki
+-> verify public URLs
 ```
 
-Use the extended path when the user wants structure maintenance, website sync, or R2 sync. Publish only after the package-facing check passes.
+Insert `update-wiki` when the user requests structure maintenance or when several closely related sources clearly justify promotion. Publication remains the default with or without this optional step. Publish only after the package-facing check passes.
 
 
 ## Data-Only Update Policy
@@ -154,6 +163,8 @@ source note / topic / synthesis update
 -> build wiki package
 -> check package fields
 -> sync package to R2
+-> refresh website-facing data
+-> verify the package manifest, source JSON, and public source page
 ```
 
 Only use git commits for:
@@ -171,8 +182,7 @@ This should mirror Follow data updates: the website reads cloud data, while the 
    - for arXiv IDs, `abs` URLs, or `pdf` URLs, prefer the corresponding `html` page first
    - if the `html` page is unavailable or incomplete, fall back to `abs`, then to `pdf`
 2. Resolve the target wiki root before doing any write operation.
-3. If the paper already has a matching source note:
-   - ask whether to refresh the note or just attach and reorganize around it
+3. If the paper already has a matching source note, refresh and reintegrate it by default without asking. Use attach-only behavior only when the user explicitly requests it.
 4. Prefer this routing:
    - new paper, immediate ingest -> `direct`
    - new paper, preview first -> `draft`
@@ -180,15 +190,18 @@ This should mirror Follow data updates: the website reads cloud data, while the 
 5. Keep each downstream skill within its own responsibility boundary.
 6. Do not duplicate paper synthesis inside this skill.
 7. Do not duplicate topic/synthesis promotion logic inside this skill.
-8. Do not run website sync unless the user asked for it.
+8. Publish the R2 package and refresh the website by default. Skip publication only when the current request explicitly says `不发布`, `仅写入本地`, `只做草稿`, `不要同步网站/R2`, or gives an equivalent opt-out.
 9. After every source note write, run the source completeness checker for the produced slug.
 10. If the checker reports missing required sections, labeled risk fields, source links, domain, tags, or related topics, edit the source note and rerun the checker until it passes.
-11. After building a package for website/R2 sync, run the checker again with `--package-dir`; missing `riskScenarios` or `riskJudgment` in JSON is a blocker.
+11. Validate the wiki, build the website/R2 package, then run the checker again with `--package-dir`; missing `riskScenarios` or `riskJudgment` in JSON is a blocker.
+12. Treat publication as a terminal condition, not a best-effort extra. After upload, verify that the package manifest, `source/<slug>.json`, and the public `/wiki/source/<slug>` page return successfully and correspond to the requested paper.
+13. If a pre-existing validation error blocks publication, make a safe deterministic schema repair when possible and rerun validation. Otherwise report the exact publication blocker; never silently finish after only producing the local note.
+14. Do not ask for routine confirmation before analysis or publication. Ask only when a material ambiguity cannot be resolved from the paper reference, configured wiki, or explicit mode.
 
 
 ## Completeness Check Loop
 
-Run this loop after `paper-analyze` writes the source note, and again after package build when website/R2 sync is requested.
+Run this loop after `paper-analyze` writes the source note, and again after the default package build. In explicit local-only or draft mode, the package-stage check may be deferred with publication.
 
 ```bash
 python3 skill/arxiv-to-wiki/scripts/check_source_completeness.py \
@@ -242,12 +255,13 @@ The bold labels above are the canonical authoring syntax and must be emitted ver
 - One paper, normal use:
   - `paper-analyze`
   - `llm-wiki`
+  - validate, package, publish, and verify automatically
 - Several new papers have accumulated:
   - run this skill per paper
   - if parallelism is available, use one worker per paper
   - later run `update-wiki`
-- The user wants the public page refreshed:
-  - run `publish-wiki` after wiki updates stabilize
+- The user explicitly says not to publish:
+  - stop after the requested local or draft artifacts and report that publication was intentionally skipped
 
 ## Handoff Contract
 
@@ -269,7 +283,8 @@ Before invoking `update-wiki`, ensure:
 Before invoking `publish-wiki`, ensure:
 
 - the wiki content already exists and is the source of truth
-- the user wants website-facing data refreshed
+- source and package completeness checks pass
+- the request does not contain an explicit publication opt-out
 
 ## Success Criteria
 
@@ -278,10 +293,14 @@ A successful run should leave the system in one of these states:
 - `direct`
   - one new or updated `wiki/sources/*.md` note exists
   - the note is integrated into the wiki structure
+  - the R2 package contains the source JSON
+  - the public `/wiki/source/<slug>` page is reachable and shows the requested paper
 - `draft`
   - one draft note exists and is ready for review
+  - publication is intentionally deferred until the draft is accepted
 - `attach`
   - an existing source note is now properly connected into wiki structure
+  - the refreshed package and public page are verified unless the user opted out
 
 ## Common Mistakes
 
@@ -289,7 +308,8 @@ A successful run should leave the system in one of these states:
 |---------|-----|
 | Treating this skill as a replacement for `paper-analyze` | Keep single-paper reading and judgment in `paper-analyze` |
 | Treating this skill as a replacement for `llm-wiki` | Keep knowledge-base maintenance in `llm-wiki` |
-| Auto-running `publish-wiki` every time | Only sync the website when the user asks |
+| Stopping after the local wiki note | Publish and verify R2 plus the public source page unless the user explicitly opted out |
+| Asking whether to publish | Apply the persistent default automatically; ask only when the request explicitly selects draft or is materially ambiguous |
 | Creating topics after every paper | Leave structural promotion to `update-wiki` unless there is an obvious immediate need |
 | Lowering note depth for multi-paper runs | Keep the OpenVLA quality bar; reduce batch size rather than output quality |
 

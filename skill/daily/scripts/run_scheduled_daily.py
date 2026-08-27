@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import json
 import os
 import shutil
@@ -199,6 +200,15 @@ def build_pending_message(run_date: str, result: Dict[str, Any], summary_url: st
     return "\n".join(lines)
 
 
+def build_notification_idempotency_key(run_date: str, kind: str, message: str) -> str:
+    digest = hashlib.sha256(message.encode("utf-8")).hexdigest()[:8]
+    return "followhub-{0}-{1}-{2}".format(
+        run_date.replace("-", ""),
+        str(kind or "note").strip() or "note",
+        digest,
+    )
+
+
 def send_lark_message(
     *, lark_cli: str, chat_id: str, message: str, idempotency_key: str
 ) -> Dict[str, Any]:
@@ -231,7 +241,24 @@ def send_lark_message(
             "returncode": proc.returncode,
             "error": (proc.stderr or proc.stdout or "lark-cli failed").strip()[-1000:],
         }
-    return {"ok": True}
+    result: Dict[str, Any] = {"ok": True}
+    stdout_text = (proc.stdout or "").strip()
+    if stdout_text:
+        try:
+            parsed = json.loads(stdout_text)
+        except ValueError:
+            result["output"] = stdout_text[-1000:]
+        else:
+            result["response"] = parsed
+            if isinstance(parsed, dict):
+                data = parsed.get("data") or {}
+                if isinstance(data, dict):
+                    for key in ("message_id", "msg_id", "id"):
+                        value = data.get(key)
+                        if value:
+                            result["message_id"] = str(value)
+                            break
+    return result
 
 
 def notify_once(
@@ -260,6 +287,8 @@ def notify_once(
         {
             "sent_at": datetime.now().astimezone().isoformat(),
             "idempotency_key": idempotency_key,
+            "message_id": str(result.get("message_id") or ""),
+            "response": result.get("response") or {},
         },
     )
     return True
@@ -334,7 +363,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                     lark_cli=lark_cli,
                     chat_id=args.notify_chat_id,
                     message=build_success_message(run_date, existing_success, args.summary_url),
-                    idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+                    idempotency_key=build_notification_idempotency_key(
+                        run_date,
+                        "success",
+                        build_success_message(run_date, existing_success, args.summary_url),
+                    ),
                 )
                 print("FollowHub daily already succeeded for {0}; skipping.".format(run_date))
                 return 0
@@ -371,7 +404,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 lark_cli=lark_cli,
                 chat_id=args.notify_chat_id,
                 message=build_success_message(run_date, precheck, args.summary_url),
-                idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+                idempotency_key=build_notification_idempotency_key(
+                    run_date,
+                    "success",
+                    build_success_message(run_date, precheck, args.summary_url),
+                ),
             )
             print("Existing successful daily detected for {0}; marker written.".format(run_date))
             return 0
@@ -430,7 +467,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 lark_cli=lark_cli,
                 chat_id=args.notify_chat_id,
                 message=build_success_message(run_date, success, args.summary_url),
-                idempotency_key="followhub-{0}-success".format(run_date.replace("-", "")),
+                idempotency_key=build_notification_idempotency_key(
+                    run_date,
+                    "success",
+                    build_success_message(run_date, success, args.summary_url),
+                ),
             )
             print("FollowHub daily succeeded for {0}.".format(run_date))
             return 0
@@ -441,7 +482,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 lark_cli=lark_cli,
                 chat_id=args.notify_chat_id,
                 message=build_failure_message(run_date, postcheck, args.summary_url),
-                idempotency_key="followhub-{0}-failure".format(run_date.replace("-", "")),
+                idempotency_key=build_notification_idempotency_key(
+                    run_date,
+                    "failure",
+                    build_failure_message(run_date, postcheck, args.summary_url),
+                ),
             )
         elif args.notify_pending_once:
             notify_once(
@@ -449,7 +494,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 lark_cli=lark_cli,
                 chat_id=args.notify_chat_id,
                 message=build_pending_message(run_date, postcheck, args.summary_url),
-                idempotency_key="followhub-{0}-pending".format(run_date.replace("-", "")),
+                idempotency_key=build_notification_idempotency_key(
+                    run_date,
+                    "pending",
+                    build_pending_message(run_date, postcheck, args.summary_url),
+                ),
             )
 
         print(

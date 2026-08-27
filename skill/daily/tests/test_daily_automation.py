@@ -363,9 +363,23 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("仍在重试", message)
         self.assertIn("下一次定时触发", message)
 
+    def test_notification_idempotency_key_changes_with_message(self):
+        first = runner.build_notification_idempotency_key(
+            "2026-08-26", "success", "message a"
+        )
+        second = runner.build_notification_idempotency_key(
+            "2026-08-26", "success", "message b"
+        )
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("followhub-20260826-success-"))
+
     @mock.patch.object(runner.subprocess, "run")
     def test_lark_notification_uses_bot_chat_message(self, run):
-        run.return_value = mock.Mock(returncode=0, stdout="{}", stderr="")
+        run.return_value = mock.Mock(
+            returncode=0,
+            stdout=json.dumps({"data": {"message_id": "om_test"}}),
+            stderr="",
+        )
         result = runner.send_lark_message(
             lark_cli="/opt/lark-cli",
             chat_id="oc_test",
@@ -373,6 +387,7 @@ class ScheduledRunnerTest(unittest.TestCase):
             idempotency_key="followhub-20260826-success",
         )
         self.assertTrue(result["ok"])
+        self.assertEqual("om_test", result["message_id"])
         command = run.call_args.args[0]
         self.assertEqual("/opt/lark-cli", command[0])
         self.assertIn("oc_test", command)

@@ -14,6 +14,10 @@ from typing import Dict, List, Optional
 
 UNIT_NAME = "followhub-daily"
 RUN_HOURS = (7, 9, 11, 13, 15, 17, 19, 21, 23)
+SYSTEM_PATH = (
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
+    "/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
+)
 LARK_CHANNEL_ENVIRONMENT = (
     "LARK_CHANNEL",
     "LARK_CHANNEL_HOME",
@@ -35,6 +39,7 @@ def build_service_unit(
     codex_bin: Path,
     config_path: Path,
     *,
+    node_bin: Optional[Path] = None,
     lark_cli: Optional[Path] = None,
     notify_chat_id: Optional[str] = None,
     summary_url: str = "https://tenstep.top/follow/",
@@ -42,6 +47,12 @@ def build_service_unit(
 ) -> str:
     runner = repo / "skill" / "daily" / "scripts" / "run_scheduled_daily.py"
     environment_lines = []
+    if node_bin is not None:
+        environment_lines.append(
+            'Environment="PATH={0}:{1}"'.format(
+                _unit_value(node_bin.parent), SYSTEM_PATH
+            )
+        )
     for key, value in (channel_environment or {}).items():
         if key not in LARK_CHANNEL_ENVIRONMENT or not value:
             continue
@@ -114,6 +125,7 @@ def install(
     repo: Path,
     codex_bin: Path,
     config_path: Path,
+    node_bin: Optional[Path] = None,
     lark_cli: Optional[Path] = None,
     notify_chat_id: Optional[str] = None,
     summary_url: str = "https://tenstep.top/follow/",
@@ -129,6 +141,7 @@ def install(
             repo,
             codex_bin,
             config_path,
+            node_bin=node_bin,
             lark_cli=lark_cli,
             notify_chat_id=notify_chat_id,
             summary_url=summary_url,
@@ -147,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo")
     parser.add_argument("--config")
     parser.add_argument("--codex-bin")
+    parser.add_argument("--node-bin")
     parser.add_argument("--lark-cli")
     parser.add_argument("--notify-chat-id")
     parser.add_argument("--summary-url", default="https://tenstep.top/follow/")
@@ -163,6 +177,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not codex_value:
         raise SystemExit("codex executable not found")
     codex_bin = Path(codex_value).expanduser().resolve()
+    node_value = args.node_bin or shutil.which("node")
+    if not node_value:
+        raise SystemExit("node executable not found")
+    node_bin = Path(node_value).expanduser().resolve()
     lark_value = args.lark_cli or shutil.which("lark-cli")
     if args.notify_chat_id and not lark_value:
         raise SystemExit("lark-cli executable not found")
@@ -173,6 +191,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         repo=repo,
         codex_bin=codex_bin,
         config_path=config_path,
+        node_bin=node_bin,
         lark_cli=lark_cli,
         notify_chat_id=args.notify_chat_id,
         summary_url=args.summary_url,
@@ -190,6 +209,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "enabled": not args.no_enable,
                 "hours": list(RUN_HOURS),
                 "timezone": "Asia/Shanghai",
+                "node_bin": str(node_bin),
                 "notifications": bool(args.notify_chat_id),
                 "summary_url": args.summary_url if args.notify_chat_id else None,
             },

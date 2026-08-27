@@ -207,10 +207,14 @@ class SystemdUnitTest(unittest.TestCase):
 
     def test_service_uses_exact_repo_and_config(self):
         service = installer.build_service_unit(
-            Path("/srv/FollowHub"), Path("/opt/codex"), Path("/srv/FollowHub/followhub.yaml")
+            Path("/srv/FollowHub"),
+            Path("/opt/codex"),
+            Path("/srv/FollowHub/followhub.yaml"),
+            node_bin=Path("/opt/node-v20/bin/node"),
         )
         self.assertIn("WorkingDirectory=/srv/FollowHub", service)
         self.assertIn("FOLLOWHUB_CONFIG=/srv/FollowHub/followhub.yaml", service)
+        self.assertIn("PATH=/opt/node-v20/bin:/usr/local/sbin", service)
         self.assertIn("TimeoutStartSec=1h50min", service)
 
     def test_service_passes_notification_and_bridge_context(self):
@@ -218,6 +222,7 @@ class SystemdUnitTest(unittest.TestCase):
             Path("/srv/FollowHub"),
             Path("/opt/codex"),
             Path("/srv/FollowHub/followhub.yaml"),
+            node_bin=Path("/opt/node-v20/bin/node"),
             lark_cli=Path("/opt/lark-cli"),
             notify_chat_id="oc_test",
             summary_url="https://tenstep.top/follow/",

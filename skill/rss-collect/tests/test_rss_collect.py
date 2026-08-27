@@ -73,6 +73,28 @@ rss:
         self.assertEqual(items[0]["title"], "Item One")
         self.assertEqual(items[0]["source_type"], "wechat")
 
+    def test_parse_rss_feed_preserves_content_encoded_as_content_text(self):
+        xml_text = """<?xml version="1.0"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example Feed</title>
+    <item>
+      <title>Item One</title>
+      <link>https://example.com/1</link>
+      <guid>id-1</guid>
+      <pubDate>Tue, 13 May 2026 09:00:00 GMT</pubDate>
+      <description>Short summary</description>
+      <content:encoded><![CDATA[<article><p>Hello <b>world</b></p></article>]]></content:encoded>
+    </item>
+  </channel>
+</rss>
+"""
+        source = self.module.SourceConfig(name="example", source_type="wechat", feed_url="https://example.com/feed.xml")
+        items = self.module.parse_feed(xml_text, source)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["content_text"], "Hello world")
+        self.assertEqual(items[0]["raw_meta"]["content_origin"], "rss-content-encoded")
+
     def test_load_rss_settings_supports_collect_workers_and_proxy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

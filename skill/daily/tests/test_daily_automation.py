@@ -292,6 +292,14 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("2026-08-26", prompt)
         self.assertIn("Run daily.", prompt)
 
+    def test_prompt_marks_scheduled_run_as_unattended(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            prompt_path = Path(temporary_dir) / "prompt.md"
+            prompt_path.write_text("Delegate via standalone workers.", encoding="utf-8")
+            prompt = runner.build_prompt(prompt_path, "2026-08-26")
+        self.assertIn("2026-08-26", prompt)
+        self.assertIn("standalone workers", prompt)
+
     def test_success_message_contains_counts_and_link(self):
         message = runner.build_success_message(
             "2026-08-26",

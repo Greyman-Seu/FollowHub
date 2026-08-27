@@ -19,7 +19,7 @@ Do not interpret “daily” as arXiv-only or RSS-only. A source-specific reques
 3. Run each pipeline according to its own `SKILL.md` contract:
    - `arxiv-daily`: collect → title-prefilter → filter → enrich → publish → verify
    - `rss-daily`: collect → normalize → fetch → dedupe → cluster → prefilter → filter → enrich → digest → publish → verify
-4. Delegate all paper/item-level review and completion work to subagents. The main agent only orchestrates batches, validates and merges artifacts, invokes deterministic tools, and verifies publication.
+4. Delegate all paper/item-level review and completion work to subagents or equivalent worker delegation. The main agent only orchestrates batches, validates and merges artifacts, invokes deterministic tools, and verifies publication.
 5. Publish each completed pipeline independently. Same-day publish operations must preserve and merge the other source sections through the existing Follow publish path.
 6. Verify the final page data contains both updates:
    - `follow/latest.json`
@@ -46,6 +46,7 @@ The timer runs at 07:00 Asia/Shanghai and then every two hours through 23:00. Th
 
 - uses a per-date file lock so attempts cannot overlap
 - checks local verification artifacts and the actual R2 JSON before starting Codex
+- runs Codex in an unattended environment, so worker fan-out must use standalone/equivalent delegation instead of collaboration-thread subagents
 - by default treats all configured X/Twitter RSS feeds failing acquisition as incomplete, even if other sources published successfully
 - can mark specific source families optional with `--allow-unavailable-source <source>` so verified remaining sources still publish while the outage is reported
 - writes a dated success marker only when `latest`, `daily`, and affected source files all match

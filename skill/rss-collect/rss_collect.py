@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import email.utils
+import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -59,8 +61,15 @@ class SourceConfig:
         self.max_items = max_items
 
 
-ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
+ATOM_NS = {
+    "atom": "http://www.w3.org/2005/Atom",
+    "content": "http://purl.org/rss/1.0/modules/content/",
+}
 X_SOURCE_HOSTS = {"nitter.net"}
+SCRIPT_TAG_PAT = re.compile(r"<script\b.*?</script>", re.IGNORECASE | re.DOTALL)
+STYLE_TAG_PAT = re.compile(r"<style\b.*?</style>", re.IGNORECASE | re.DOTALL)
+TAG_PAT = re.compile(r"<[^>]+>")
+WS_PAT = re.compile(r"\s+")
 
 
 def resolve_proxy_settings(rss: Dict[str, Any]) -> Dict[str, str]:
@@ -377,6 +386,14 @@ def _clean_text(value: str) -> str:
     return " ".join(str(value or "").split())
 
 
+def _html_to_text(raw_html: str) -> str:
+    text = SCRIPT_TAG_PAT.sub(" ", raw_html or "")
+    text = STYLE_TAG_PAT.sub(" ", text)
+    text = TAG_PAT.sub(" ", text)
+    text = html.unescape(text)
+    return WS_PAT.sub(" ", text).strip()
+
+
 def _find_text(parent: ET.Element, paths: List[str]) -> str:
     for path in paths:
         node = parent.find(path, ATOM_NS)
@@ -392,6 +409,11 @@ def parse_rss_items(xml_text: str, source: SourceConfig) -> List[Dict[str, Any]]
         link = _find_text(item, ["link"])
         guid = _find_text(item, ["guid"]) or link
         published_raw = _find_text(item, ["pubDate"])
+        content_encoded_raw = _find_text(item, ["content:encoded"])
+        content_text = _html_to_text(content_encoded_raw) if content_encoded_raw else ""
+        raw_meta: Dict[str, Any] = {"published_raw": published_raw}
+        if content_text:
+            raw_meta["content_origin"] = "rss-content-encoded"
         items.append(
             {
                 "id": f"{source.source_type}:{guid or link or _find_text(item, ['title'])}",
@@ -402,9 +424,10 @@ def parse_rss_items(xml_text: str, source: SourceConfig) -> List[Dict[str, Any]]
                 "link": link,
                 "guid": guid,
                 "published_at": (to_datetime(published_raw) or utc_now()).isoformat(),
+                "content_text": content_text,
                 "summary": _find_text(item, ["description"]),
                 "tags": list(source.tags or []),
-                "raw_meta": {"published_raw": published_raw},
+                "raw_meta": raw_meta,
             }
         )
     return items

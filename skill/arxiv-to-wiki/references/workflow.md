@@ -102,6 +102,8 @@ Treat missing structured background/method fields (`backgroundMotivation`, `back
 
 If the source note contains a useful figure, require an explicit `hero_image` in Markdown and a non-empty `heroImage` in package JSON. The page does not infer its hero from `images` or `figureGallery`.
 
+For every useful inline figure, keep the image under the Markdown section it explains and require the package builder to emit `figureGallery[].zone`. Supported zones are `intuition`, `background`, `method`, `results`, `insights`, and `risks`. Treat a missing or unsupported zone as a publication blocker: a figure that appears only in the end gallery has lost part of the source-note structure.
+
 New notes must use the canonical bold labels from `arxiv-to-wiki/SKILL.md`. Heading-style blocks such as `### 方法概述` remain readable for legacy notes, but generators must not emit them or mix the two styles.
 
 ## Batch Flow With Subagents

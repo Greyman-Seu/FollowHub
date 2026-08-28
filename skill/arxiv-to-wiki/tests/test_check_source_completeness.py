@@ -196,6 +196,37 @@ An English abstract.
 
         self.assertIn("package JSON has figureGallery but missing heroImage", errors)
 
+    def test_package_rejects_figure_without_inline_zone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp)
+            source_dir = package_dir / "source"
+            source_dir.mkdir()
+            payload = {
+                "tldr": "结论",
+                "method": "方法",
+                "risks": "风险",
+                "sourceUrl": "https://arxiv.org/abs/1234.56789",
+                "riskLimitations": ["限制"],
+                "riskScenarios": ["场景"],
+                "riskJudgment": ["判断"],
+                "backgroundMotivation": detailed_text("动机", 70),
+                "backgroundGap": detailed_text("缺口", 70),
+                "methodOverview": detailed_text("概述", 90),
+                "methodCore": detailed_text("机制", 90),
+                "methodBreakdown": ["步骤一", "步骤二", "步骤三"],
+                "methodTakeaways": ["要点一", "要点二"],
+                "figureGallery": [{"src": "https://example.com/overview.png"}],
+                "heroImage": "https://example.com/overview.png",
+            }
+            (source_dir / "example.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            errors, _ = MODULE.check_package_json(package_dir, "example")
+
+        self.assertIn(
+            "package JSON figureGallery[0] is missing a supported inline zone",
+            errors,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

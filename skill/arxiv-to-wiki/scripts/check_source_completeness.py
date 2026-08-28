@@ -256,10 +256,19 @@ def check_package_json(package_dir: Path, slug: str) -> tuple[list[str], list[st
         for key in ["htmlUrl", "pdfUrl", "translationUrl"]:
             if not str(data.get(key) or "").strip():
                 warnings.append(f"arXiv source package JSON missing optional but expected field: {key}")
-    if not data.get("figureGallery"):
+    figures = data.get("figureGallery")
+    if not figures:
         warnings.append("package JSON has no figureGallery")
     elif not str(data.get("heroImage") or "").strip():
         errors.append("package JSON has figureGallery but missing heroImage")
+    if isinstance(figures, list):
+        supported_zones = {"intuition", "background", "method", "results", "insights", "risks"}
+        for index, figure in enumerate(figures):
+            zone = str(figure.get("zone") or "").strip() if isinstance(figure, dict) else ""
+            if zone not in supported_zones:
+                errors.append(
+                    f"package JSON figureGallery[{index}] is missing a supported inline zone"
+                )
     return errors, warnings
 
 

@@ -126,7 +126,7 @@ This means:
   - real `方法` decomposition
   - concrete `结果`
   - non-generic `洞察`
-  - figures when useful
+  - figures when useful, placed next to the section they explain instead of only in an end gallery
   - a result table when the source supports it
 
 If the batch is too large to maintain that quality, reduce batch size or concurrency instead of lowering standards.
@@ -193,7 +193,7 @@ This should mirror Follow data updates: the website reads cloud data, while the 
 8. Publish the R2 package and refresh the website by default. Skip publication only when the current request explicitly says `不发布`, `仅写入本地`, `只做草稿`, `不要同步网站/R2`, or gives an equivalent opt-out.
 9. After every source note write, run the source completeness checker for the produced slug.
 10. If the checker reports missing required sections, labeled risk fields, source links, domain, tags, or related topics, edit the source note and rerun the checker until it passes.
-11. Validate the wiki, build the website/R2 package, then run the checker again with `--package-dir`; missing `riskScenarios` or `riskJudgment` in JSON is a blocker.
+11. Validate the wiki, build the website/R2 package, then run the checker again with `--package-dir`; missing `riskScenarios`, `riskJudgment`, or an inline `zone` on any packaged figure is a blocker.
 12. Treat publication as a terminal condition, not a best-effort extra. After upload, verify that the package manifest, `source/<slug>.json`, and the public `/wiki/source/<slug>` page return successfully and correspond to the requested paper.
 13. If a pre-existing validation error blocks publication, make a safe deterministic schema repair when possible and rerun validation. Otherwise report the exact publication blocker; never silently finish after only producing the local note.
 14. Do not ask for routine confirmation before analysis or publication. Ask only when a material ambiguity cannot be resolved from the paper reference, configured wiki, or explicit mode.
@@ -245,6 +245,9 @@ Required source-note fields include:
   - `riskScenarios`
   - `riskJudgment`
   - `heroImage` when `figureGallery` is non-empty
+  - `figureGallery[].zone` for every figure, using the section where the Markdown image appears: `intuition`, `background`, `method`, `results`, `insights`, or `risks`
+
+Useful figures must remain attached to their explanatory section through the full Markdown -> package JSON -> Page path. The Page may keep an end gallery only for genuinely unclassified supplemental images; it must not be the sole location of figures already placed under a supported source-note section.
 
 These thresholds are a mechanical floor, not the writing target. Never pad a field or fill it with a placeholder merely to pass. Re-read the paper or existing note and add a concrete, paper-specific explanation that lets a reader understand why the work is needed and how it operates.
 
@@ -309,6 +312,7 @@ A successful run should leave the system in one of these states:
 | Treating this skill as a replacement for `paper-analyze` | Keep single-paper reading and judgment in `paper-analyze` |
 | Treating this skill as a replacement for `llm-wiki` | Keep knowledge-base maintenance in `llm-wiki` |
 | Stopping after the local wiki note | Publish and verify R2 plus the public source page unless the user explicitly opted out |
+| Preserving figures only in the end gallery | Keep each image under its explanatory Markdown section, verify its package `zone`, and confirm it renders inline on the public page |
 | Asking whether to publish | Apply the persistent default automatically; ask only when the request explicitly selects draft or is materially ambiguous |
 | Creating topics after every paper | Leave structural promotion to `update-wiki` unless there is an obvious immediate need |
 | Lowering note depth for multi-paper runs | Keep the OpenVLA quality bar; reduce batch size rather than output quality |

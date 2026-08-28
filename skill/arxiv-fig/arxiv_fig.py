@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import html as html_lib
 import json
 import os
 import re
@@ -533,22 +534,60 @@ def resolve_html_image_url(html_url: str, image_src: str) -> str:
 
 def extract_figures_from_html(html: str, html_url: str):
     """Level 1: Extract figures from HTML <figure> tags."""
-    figures_raw = re.findall(r"<figure[^>]*>.*?</figure>", html, re.DOTALL)
+    figure_matches = list(re.finditer(r"<figure[^>]*>.*?</figure>", html, re.DOTALL))
     figures = []
 
-    for i, fig in enumerate(figures_raw):
-        img = re.search(r'<img[^>]*src="([^"]+)"', fig)
-        if not img:
+    for figure_match in figure_matches:
+        fig = figure_match.group(0)
+        opening_tag = re.match(r"<figure\b[^>]*>", fig, re.IGNORECASE)
+        if opening_tag and re.search(
+            r"\bclass\s*=\s*(['\"])[^'\"]*\bltx_table\b[^'\"]*\1",
+            opening_tag.group(0),
+            re.IGNORECASE,
+        ):
+            continue
+
+        image = re.search(
+            r"<img\b[^>]*\bsrc\s*=\s*(['\"])(.*?)\1",
+            fig,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not image:
+            image = re.search(
+                r"<object\b[^>]*\bdata\s*=\s*(['\"])(.*?)\1",
+                fig,
+                re.IGNORECASE | re.DOTALL,
+            )
+        if not image:
+            # LaTeXML occasionally emits an uncaptioned image in the sibling
+            # immediately before a caption-only <figure> (for example arXiv
+            # 2410.09309 Fig. 1). Keep the association only when there is no
+            # intervening content beyond the sibling's closing container.
+            leading_html = html[max(0, figure_match.start() - 3000) : figure_match.start()]
+            image = re.search(
+                r"<img\b[^>]*\bsrc\s*=\s*(['\"])(.*?)\1[^>]*>\s*</(?:div|p)>\s*$",
+                leading_html,
+                re.IGNORECASE | re.DOTALL,
+            )
+        if not image:
             continue
 
         cap = re.search(r"<figcaption[^>]*>(.*?)</figcaption>", fig, re.DOTALL)
-        cap_text = re.sub(r"<[^>]+>", "", cap.group(1)).strip() if cap else ""
+        cap_text = re.sub(r"<[^>]+>", "", cap.group(1)) if cap else ""
+        cap_text = html_lib.unescape(re.sub(r"\s+", " ", cap_text)).strip()
 
-        src = resolve_html_image_url(html_url, img.group(1))
+        number_match = re.search(r"\bid\s*=\s*(['\"])[^'\"]*\.F(\d+)[^'\"]*\1", fig, re.IGNORECASE)
+        if not number_match:
+            number_match = re.search(r"(?:figure|fig\.)\s*(\d+)", cap_text, re.IGNORECASE)
+            figure_number = int(number_match.group(1)) if number_match else len(figures) + 1
+        else:
+            figure_number = int(number_match.group(2))
+
+        src = resolve_html_image_url(html_url, image.group(2))
 
         figures.append(
             {
-                "figure_number": i + 1,
+                "figure_number": figure_number,
                 "caption": cap_text,
                 "image_url": src,
                 "image_path": None,

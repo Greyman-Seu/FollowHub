@@ -257,6 +257,8 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
             language="zh",
             authors=["Alice", "Bob"],
             affiliation="Example Lab",
+            related_organizations=["Example Lab"],
+            related_companies=[],
             source_kind="arxiv_id",
             source_input="1234.5678",
             source_url="https://arxiv.org/abs/1234.5678",
@@ -316,6 +318,7 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
         self.assertIn("keywords:\n  - planner\n  - tool-use", markdown)
         self.assertIn("tags:\n  - paper\n  - agent", markdown)
         self.assertIn("images:\n  - https://example.com/fig1.png", markdown)
+        self.assertIn('hero_image: "https://example.com/fig1.png"', markdown)
         self.assertIn("related_topics:\n  - tool-use-workflows", markdown)
         self.assertNotIn("\n        title:", markdown)
 
@@ -331,6 +334,37 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
     def test_derive_hjfy_url(self):
         self.assertEqual(self.module.derive_hjfy_url("2406.09246"), "https://hjfy.top/arxiv/2406.09246")
         self.assertEqual(self.module.derive_hjfy_url(""), "")
+
+    def test_extract_affiliation_from_html_reads_latexml_author_contacts(self):
+        html = """
+        <div class="ltx_authors">
+          <span class="ltx_contact ltx_role_affiliation">
+            <span class="ltx_contact_name">Affiliation:</span> Stanford University
+          </span>
+          <span class="ltx_contact ltx_role_affiliation">
+            <span class="ltx_contact_name">Affiliation:</span> Toyota Research Institute
+            <a href="https://example.github.io">project</a>
+          </span>
+          <span class="ltx_contact ltx_role_affiliation">
+            <span class="ltx_contact_name">Affiliation:</span> Stanford University
+          </span>
+        </div>
+        """
+
+        self.assertEqual(
+            self.module.extract_affiliation_from_html(html),
+            "Stanford University; Toyota Research Institute",
+        )
+
+    def test_extract_affiliation_from_html_ignores_numbered_body_text(self):
+        html = """
+        <article>
+          <p>1 Inputs and Encoding: resized with random cropping.</p>
+          <p>2 Outputs and decoding: predicts a target pose.</p>
+        </article>
+        """
+
+        self.assertEqual(self.module.extract_affiliation_from_html(html), "")
 
     def test_quality_gate_payload_rejects_thin_note(self):
         ok, failures = self.module.quality_gate_payload(

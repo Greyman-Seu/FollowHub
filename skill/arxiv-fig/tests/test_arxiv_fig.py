@@ -75,6 +75,52 @@ class ArxivFigSkillTests(unittest.TestCase):
             "https://arxiv.org/html/2605.13548v3/figures/main_plot2.png",
         )
 
+    def test_extract_figures_from_html_supports_svg_objects_and_preserves_figure_numbers(self):
+        html = (
+            '<figure id="S0.F1" class="ltx_figure">'
+            '<object type="image/svg+xml" data="2410.09309v2/method.svg"></object>'
+            '<figcaption>Fig. 1: Method &amp; control overview.</figcaption></figure>'
+            '<figure id="S4.T1" class="ltx_table"><figcaption>Table 1.</figcaption></figure>'
+            '<figure id="S4.F7" class="ltx_figure">'
+            "<img src='2410.09309v2/results.png'>"
+            '<figcaption>Fig. 7: Results.</figcaption></figure>'
+        )
+
+        figures = self.module.extract_figures_from_html(
+            html,
+            "https://arxiv.org/html/2410.09309",
+        )
+
+        self.assertEqual([figure["figure_number"] for figure in figures], [1, 7])
+        self.assertEqual(figures[0]["caption"], "Fig. 1: Method & control overview.")
+        self.assertEqual(
+            figures[0]["image_url"],
+            "https://arxiv.org/html/2410.09309v2/method.svg",
+        )
+        self.assertEqual(
+            figures[1]["image_url"],
+            "https://arxiv.org/html/2410.09309v2/results.png",
+        )
+
+    def test_extract_figures_from_html_associates_adjacent_uncaptioned_image(self):
+        html = (
+            '<div id="p1"><img src="2410.09309v2/teaser.png" alt="[Uncaptioned image]">'
+            '</div><figure id="S0.F1" class="ltx_figure">'
+            '<figcaption>Fig. 1: Compliance requirements.</figcaption></figure>'
+        )
+
+        figures = self.module.extract_figures_from_html(
+            html,
+            "https://arxiv.org/html/2410.09309",
+        )
+
+        self.assertEqual(len(figures), 1)
+        self.assertEqual(figures[0]["figure_number"], 1)
+        self.assertEqual(
+            figures[0]["image_url"],
+            "https://arxiv.org/html/2410.09309v2/teaser.png",
+        )
+
     def test_parse_tex_captions_handles_nested_braces(self):
         tex = r"""
         \begin{figure}

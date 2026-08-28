@@ -330,6 +330,21 @@ def extract_authors_from_html(html_text: str) -> List[str]:
 
 
 def extract_affiliation_from_html(html_text: str) -> str:
+    latexml_affiliations = re.findall(
+        r'<span[^>]*class=["\'][^"\']*\bltx_role_affiliation\b[^"\']*["\'][^>]*>'
+        r'\s*<span[^>]*>.*?</span>\s*([^<\n]+)',
+        html_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if latexml_affiliations:
+        affiliations: List[str] = []
+        for raw_value in latexml_affiliations:
+            value = compact_text(raw_value.strip(" ,.;\u00a0"))
+            if value and value not in affiliations:
+                affiliations.append(value)
+        if affiliations:
+            return "; ".join(affiliations)
+
     if "footnotetext:" in html_text.lower():
         numbered = re.findall(r'<sup[^>]*>(\d+)</sup>\s*([^,<]+)', html_text, re.IGNORECASE)
         if numbered:
@@ -341,7 +356,13 @@ def extract_affiliation_from_html(html_text: str) -> str:
             if affiliations:
                 return "; ".join(affiliations)
 
-    plain = re.sub(r"<[^>]+>", "\n", html_text)
+    authors_match = re.search(
+        r'<div[^>]*class=["\'][^"\']*\bltx_authors\b[^"\']*["\'][^>]*>(.*?)</div>',
+        html_text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    affiliation_scope = authors_match.group(1) if authors_match else html_text[:8000]
+    plain = re.sub(r"<[^>]+>", "\n", affiliation_scope)
     plain = re.sub(r"\n+", "\n", plain)
     lines = [line.strip(" ,") for line in plain.splitlines() if line.strip()]
     numbered_affiliations: List[str] = []
@@ -350,7 +371,19 @@ def extract_affiliation_from_html(html_text: str) -> str:
         if not match:
             continue
         candidate = compact_text(match.group(1).strip(" ,.;"))
-        if candidate and len(candidate) > 3 and any(ch.isalpha() for ch in candidate):
+        organization_markers = (
+            "university",
+            "institute",
+            "laboratory",
+            "lab",
+            "college",
+            "school",
+            "berkeley",
+            "research",
+            "inc.",
+            "corporation",
+        )
+        if candidate and any(marker in candidate.lower() for marker in organization_markers):
             numbered_affiliations.append(candidate)
     if numbered_affiliations:
         unique: List[str] = []
@@ -1164,6 +1197,7 @@ keywords:
 {keywords_yaml}
 images:
 {images_yaml}
+hero_image: "{hero_image_url}"
 related_topics:
 {related_yaml}
 status: analyzed

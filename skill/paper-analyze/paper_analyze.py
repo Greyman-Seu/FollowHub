@@ -167,6 +167,17 @@ def render_yaml_list(values: List[str], fallback: str) -> str:
     return "\n".join(f"  - {value}" for value in cleaned)
 
 
+def render_yaml_list_or_empty(values: List[str]) -> str:
+    cleaned = normalize_list(values)
+    if not cleaned:
+        return " []"
+    return "\n" + "\n".join(f"  - \"{value}\"" for value in cleaned)
+
+
+def render_yaml_scalar(value: str) -> str:
+    return json.dumps(str(value or ""), ensure_ascii=False)
+
+
 def split_organization_labels(values: List[str]) -> List[str]:
     labels: List[str] = []
     for raw in values:
@@ -217,6 +228,15 @@ def render_figure_block(image_url: str, caption: str = "") -> str:
     if caption:
         return f"![{caption}]({image_url})\n\n*{caption}*"
     return f"![]({image_url})"
+
+
+def merge_unique_urls(*groups: List[str]) -> List[str]:
+    merged: List[str] = []
+    for group in groups:
+        for url in normalize_list(group):
+            if url not in merged:
+                merged.append(url)
+    return merged
 
 
 def labeled_block_zh(label: str, body: str) -> str:
@@ -282,7 +302,16 @@ def extract_authors_from_html(html_text: str) -> List[str]:
         html_text,
         re.IGNORECASE,
     )
-    cleaned = normalize_list([compact_text(author) for author in authors])
+    cleaned: List[str] = []
+    for author in authors:
+        raw_value = compact_text(author)
+        if not raw_value:
+            continue
+        if raw_value.count(",") == 1:
+            last_name, first_names = [part.strip() for part in raw_value.split(",", 1)]
+            raw_value = compact_text(f"{first_names} {last_name}")
+        if raw_value not in cleaned:
+            cleaned.append(raw_value)
     if cleaned:
         return cleaned
 
@@ -297,7 +326,7 @@ def extract_authors_from_html(html_text: str) -> List[str]:
 
     block = re.sub(r"<a[^>]*>.*?</a>", " ", block, flags=re.IGNORECASE | re.DOTALL)
     block = re.sub(r"<sup[^>]*>.*?</sup>", "|||", block, flags=re.IGNORECASE | re.DOTALL)
-    block = re.sub(r"<br[^>]*>", " ", block, flags=re.IGNORECASE)
+    block = re.sub(r"<br[^>]*>", " ||| ", block, flags=re.IGNORECASE)
     block = re.sub(r"<[^>]+>", " ", block)
     block = block.replace("\u2003", " ")
     block = re.sub(r"\s+", " ", block).strip()
@@ -724,11 +753,29 @@ def maybe_extract_figure_urls(
     config_path: Optional[str],
     intent: str,
 ) -> List[str]:
+    return maybe_extract_figure_assets(source_spec, config_path, intent)["image_urls"]
+
+
+def empty_figure_assets() -> Dict[str, Any]:
+    return {
+        "image_urls": [],
+        "hero_image_url": "",
+        "method_figure_urls": [],
+        "result_figure_urls": [],
+        "insight_figure_urls": [],
+    }
+
+
+def maybe_extract_figure_assets(
+    source_spec: SourceSpec,
+    config_path: Optional[str],
+    intent: str,
+) -> Dict[str, Any]:
     if source_spec.paper_id:
-        arxiv_urls = maybe_extract_arxiv_figure_urls(source_spec.paper_id, config_path, intent)
-        if arxiv_urls:
-            return arxiv_urls
-    return maybe_extract_pdf_figure_urls(source_spec, config_path)
+        arxiv_assets = maybe_extract_arxiv_figure_assets(source_spec.paper_id, config_path, intent)
+        if arxiv_assets["image_urls"]:
+            return arxiv_assets
+    return maybe_extract_pdf_figure_assets(source_spec, config_path)
 
 
 def maybe_extract_arxiv_figure_urls(
@@ -736,10 +783,29 @@ def maybe_extract_arxiv_figure_urls(
     config_path: Optional[str],
     intent: str,
 ) -> List[str]:
+    return maybe_extract_arxiv_figure_assets(paper_id, config_path, intent)["image_urls"]
+
+
+def maybe_extract_arxiv_figure_assets(
+    paper_id: str,
+    config_path: Optional[str],
+    intent: str,
+) -> Dict[str, Any]:
+    payload = maybe_extract_arxiv_figure_payload(paper_id, config_path, intent)
+    if not payload:
+        return empty_figure_assets()
+    return classify_arxiv_figure_assets(payload.get("figures") or [])
+
+
+def maybe_extract_arxiv_figure_payload(
+    paper_id: str,
+    config_path: Optional[str],
+    intent: str,
+) -> Dict[str, Any]:
     if not paper_id:
-        return []
+        return {}
     if not ARXIV_FIG_PATH.exists():
-        return []
+        return {}
     command = [sys.executable, str(ARXIV_FIG_PATH), paper_id]
     if intent:
         command.extend(["--intent", intent])
@@ -747,33 +813,114 @@ def maybe_extract_arxiv_figure_urls(
         command.extend(["--config-file", config_path])
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        return []
+        return {}
     try:
-        payload = json.loads(result.stdout)
+        return json.loads(result.stdout)
     except Exception:
-        return []
+        return {}
+
+
+def caption_matches_any(caption: str, keywords: List[str]) -> bool:
+    lowered = compact_text(caption).lower()
+    return any(keyword in lowered for keyword in keywords)
+
+
+def pick_first_matching_figure_url(figures: List[Dict[str, Any]], *, keywords: Optional[List[str]] = None, figure_numbers: Optional[List[int]] = None) -> str:
+    for figure in figures:
+        image_url = str(figure.get("image_url") or "").strip()
+        if not image_url:
+            continue
+        number = int(figure.get("figure_number") or 0)
+        caption = str(figure.get("caption") or "")
+        if figure_numbers and number in figure_numbers:
+            return image_url
+        if keywords and caption_matches_any(caption, keywords):
+            return image_url
+    return ""
+
+
+def unique_matching_figure_urls(figures: List[Dict[str, Any]], keywords: List[str], *, exclude: Optional[List[str]] = None, limit: int = 2) -> List[str]:
     urls: List[str] = []
-    for figure in payload.get("figures") or []:
-        image_url = (figure.get("image_url") or "").strip()
-        if image_url:
+    blocked = set(normalize_list(exclude))
+    for figure in figures:
+        image_url = str(figure.get("image_url") or "").strip()
+        if not image_url or image_url in blocked or image_url in urls:
+            continue
+        caption = str(figure.get("caption") or "")
+        if caption_matches_any(caption, keywords):
             urls.append(image_url)
+        if len(urls) >= limit:
+            break
     return urls
+
+
+def classify_arxiv_figure_assets(figures: List[Dict[str, Any]]) -> Dict[str, Any]:
+    assets = empty_figure_assets()
+    image_urls = merge_unique_urls([str(figure.get("image_url") or "").strip() for figure in figures])
+    assets["image_urls"] = image_urls
+    if not image_urls:
+        return assets
+
+    hero_keywords = ["teaser", "overview", "summary"]
+    method_keywords = ["architecture", "method", "framework", "pipeline", "diagram", "system"]
+    result_keywords = [
+        "result",
+        "evaluation",
+        "success",
+        "performance",
+        "error",
+        "transfer",
+        "generalization",
+        "ablation",
+        "prediction",
+    ]
+    insight_keywords = ["failure", "qualitative", "analysis", "comparison"]
+
+    hero_image_url = pick_first_matching_figure_url(figures, figure_numbers=[1]) or pick_first_matching_figure_url(figures, keywords=hero_keywords) or image_urls[0]
+    method_figure_urls = unique_matching_figure_urls(figures, method_keywords, exclude=[hero_image_url])
+    result_figure_urls = unique_matching_figure_urls(figures, result_keywords, exclude=[hero_image_url] + method_figure_urls)
+    insight_figure_urls = unique_matching_figure_urls(figures, insight_keywords, exclude=[hero_image_url] + method_figure_urls + result_figure_urls, limit=1)
+
+    assets["hero_image_url"] = hero_image_url
+    assets["method_figure_urls"] = method_figure_urls
+    assets["result_figure_urls"] = result_figure_urls
+    assets["insight_figure_urls"] = insight_figure_urls
+    return assets
 
 
 def maybe_extract_pdf_figure_urls(
     source_spec: SourceSpec,
     config_path: Optional[str],
 ) -> List[str]:
+    return maybe_extract_pdf_figure_assets(source_spec, config_path)["image_urls"]
+
+
+def maybe_extract_pdf_figure_assets(
+    source_spec: SourceSpec,
+    config_path: Optional[str],
+) -> Dict[str, Any]:
     pdf_source = resolve_pdf_source_for_figures(source_spec)
     if not pdf_source:
-        return []
+        return empty_figure_assets()
     extracted_paths = extract_caption_aligned_pdf_figures(pdf_source)
     if not extracted_paths:
         extracted_paths = extract_images_from_pdf_local(pdf_source)
     if not extracted_paths:
-        return []
+        return empty_figure_assets()
     uploaded = upload_local_figures(extracted_paths, config_path, source_spec.title_hint or "paper-note")
-    return normalize_list(uploaded)
+    image_urls = normalize_list(uploaded)
+    if not image_urls:
+        return empty_figure_assets()
+    hero_image_url = image_urls[0]
+    method_figure_urls = image_urls[1:2]
+    result_figure_urls = image_urls[2:3]
+    return {
+        "image_urls": image_urls,
+        "hero_image_url": hero_image_url,
+        "method_figure_urls": method_figure_urls,
+        "result_figure_urls": result_figure_urls,
+        "insight_figure_urls": [],
+    }
 
 
 def resolve_pdf_source_for_figures(source_spec: SourceSpec) -> Optional[Path]:
@@ -933,6 +1080,7 @@ def upload_local_figures(paths: List[Path], config_path: Optional[str], title_hi
 
 def build_markdown(
     *,
+    note_slug: str = "",
     title: str,
     language: str,
     authors: List[str],
@@ -976,14 +1124,37 @@ def build_markdown(
     application_scenarios: List[str],
     critical_notes: List[str],
 ) -> str:
-    authors_yaml = render_yaml_list(authors, "unknown")
-    domain_slugs_yaml = render_yaml_list([domain], domain)
-    tags_yaml = render_yaml_list(tags, "paper")
-    keywords_yaml = render_yaml_list(keywords, "none")
-    related_yaml = render_yaml_list(related_topics, "none")
-    images_yaml = render_yaml_list(image_urls, "none")
-    related_organizations_yaml = render_yaml_list(related_organizations, "none")
-    related_companies_yaml = render_yaml_list(related_companies, "none")
+    slug = note_slug or slugify(title)
+    created_date = str(date.today())
+    authors_yaml = render_yaml_list_or_empty(authors)
+    domain_labels = [domain] if domain else []
+    domain_slugs_yaml = render_yaml_list_or_empty(domain_labels)
+    domains_yaml = render_yaml_list_or_empty(domain_labels)
+    tags_yaml = render_yaml_list_or_empty(tags)
+    keywords_yaml = render_yaml_list_or_empty(keywords)
+    related_yaml = render_yaml_list_or_empty(related_topics)
+    images_yaml = render_yaml_list_or_empty(image_urls)
+    related_organizations_yaml = render_yaml_list_or_empty(related_organizations)
+    related_companies_yaml = render_yaml_list_or_empty(related_companies)
+    arxiv_id_value = ""
+    arxiv_match = (
+        ARXIV_ID_RE.match(source_input)
+        or ARXIV_ABS_RE.search(source_url)
+        or ARXIV_HTML_RE.search(html_url)
+        or ARXIV_PDF_RE.search(pdf_url)
+    )
+    if arxiv_match:
+        arxiv_id_value = str(arxiv_match.group("id") or "").strip()
+
+    raw_refs_values = merge_unique_urls(
+        [html_url],
+        [pdf_url],
+        [code_url],
+        [source_url],
+    )
+    raw_refs_yaml = render_yaml_list_or_empty(raw_refs_values)
+    related_syntheses_yaml = " []"
+    image_paths_yaml = " []"
 
     is_zh = language.lower().startswith("zh")
     fallback_tldr = "这篇论文提出了一个值得关注的思路，但关键信息仍需要结合正文补充。"
@@ -1170,36 +1341,52 @@ def build_markdown(
 
     return (
         f"""---
-title: "{title}"
+id: {render_yaml_scalar(slug)}
+slug: {render_yaml_scalar(slug)}
+title: {render_yaml_scalar(title)}
+type: source
+material_type: "paper"
 source_type: paper
-source_kind: "{source_kind}"
-source_input: "{source_input}"
-source_url: "{source_url}"
-html_url: "{html_url}"
-pdf_url: "{pdf_url}"
-code_url: "{code_url}"
-translation_url: "{translation_url}"
-publish_date: "{publish_date}"
-domain: "{domain}"
-primary_domain_slug: "{domain}"
-domain_slugs:
-{domain_slugs_yaml}
-authors:
-{authors_yaml}
-affiliation: "{affiliation}"
-related_organizations:
-{related_organizations_yaml}
-related_companies:
-{related_companies_yaml}
-tags:
-{tags_yaml}
-keywords:
-{keywords_yaml}
-images:
-{images_yaml}
-hero_image: "{hero_image_url}"
-related_topics:
-{related_yaml}
+source_kind: {render_yaml_scalar(source_kind)}
+source_input: {render_yaml_scalar(source_input)}
+created: {render_yaml_scalar(created_date)}
+updated: {render_yaml_scalar(created_date)}
+date: {render_yaml_scalar(publish_date)}
+publish_date: {render_yaml_scalar(publish_date)}
+source_url: {render_yaml_scalar(source_url)}
+html_url: {render_yaml_scalar(html_url)}
+pdf_url: {render_yaml_scalar(pdf_url)}
+code_url: {render_yaml_scalar(code_url)}
+translation_url: {render_yaml_scalar(translation_url)}
+arxiv_id: {render_yaml_scalar(arxiv_id_value)}
+authors:{authors_yaml}
+affiliation: {render_yaml_scalar(affiliation)}
+related_organizations:{related_organizations_yaml}
+related_companies:{related_companies_yaml}
+domains:{domains_yaml}
+domain: {render_yaml_scalar(domain)}
+primary_domain_slug: {render_yaml_scalar(domain)}
+domain_slugs:{domain_slugs_yaml}
+tags:{tags_yaml}
+summary: {render_yaml_scalar(summary)}
+keywords:{keywords_yaml}
+links:
+  original: {render_yaml_scalar(source_url)}
+  arxiv: {render_yaml_scalar(source_url if "arxiv.org" in source_url else "")}
+  html: {render_yaml_scalar(html_url)}
+  pdf: {render_yaml_scalar(pdf_url)}
+  project: {render_yaml_scalar(code_url if code_url and "github.com" not in code_url else "")}
+  github: {render_yaml_scalar(code_url if "github.com" in code_url else "")}
+  code: {render_yaml_scalar(code_url)}
+  hjfy: {render_yaml_scalar(translation_url)}
+  doi: {render_yaml_scalar(f"https://doi.org/10.48550/arXiv.{arxiv_id_value}" if arxiv_id_value else "")}
+raw_refs:{raw_refs_yaml}
+related_topics:{related_yaml}
+related_syntheses:{related_syntheses_yaml}
+confidence: EXTRACTED
+hero_image: {render_yaml_scalar(hero_image_url)}
+images:{images_yaml}
+image_paths:{image_paths_yaml}
 status: analyzed
 ---
 
@@ -1350,9 +1537,10 @@ def command_write_like(args: argparse.Namespace) -> int:
     tags = normalize_list(args.tag) or [args.domain]
     related_topics = normalize_list(args.related_topic)
     image_urls = normalize_list(args.image_url)
+    figure_assets = empty_figure_assets()
     if args.extract_figures:
-        image_urls = image_urls + maybe_extract_figure_urls(source_spec, args.config, args.figure_intent)
-        image_urls = normalize_list(image_urls)
+        figure_assets = maybe_extract_figure_assets(source_spec, args.config, args.figure_intent)
+        image_urls = merge_unique_urls(image_urls, figure_assets["image_urls"])
 
     derived = derive_fields_from_text(source_spec.raw_text, source_spec.abstract_text)
     summary = args.summary or derived["summary"]
@@ -1394,6 +1582,7 @@ def command_write_like(args: argparse.Namespace) -> int:
         research_problem = quality_guard_zh(research_problem) or research_problem
 
     content = build_markdown(
+        note_slug=output_path.stem,
         title=title,
         language=config.language,
         authors=authors,
@@ -1412,10 +1601,10 @@ def command_write_like(args: argparse.Namespace) -> int:
         tags=tags,
         keywords=keywords,
         image_urls=image_urls,
-        hero_image_url=args.hero_image_url or (image_urls[0] if image_urls else ""),
-        method_figure_urls=normalize_list(args.method_figure_url),
-        result_figure_urls=normalize_list(args.result_figure_url),
-        insight_figure_urls=normalize_list(args.insight_figure_url),
+        hero_image_url=args.hero_image_url or figure_assets["hero_image_url"] or (image_urls[0] if image_urls else ""),
+        method_figure_urls=normalize_list(args.method_figure_url) or figure_assets["method_figure_urls"],
+        result_figure_urls=normalize_list(args.result_figure_url) or figure_assets["result_figure_urls"],
+        insight_figure_urls=normalize_list(args.insight_figure_url) or figure_assets["insight_figure_urls"],
         related_topics=related_topics,
         tldr=args.tldr,
         intuitive_understanding=args.intuitive_understanding,

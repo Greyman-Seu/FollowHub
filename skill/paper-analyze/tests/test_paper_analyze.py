@@ -98,11 +98,15 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
         self.assertEqual(source.title_hint, "Fetched Title")
 
     def test_maybe_extract_figure_urls_prefers_arxiv_when_paper_id_exists(self):
-        original_arxiv = self.module.maybe_extract_arxiv_figure_urls
-        original_pdf = self.module.maybe_extract_pdf_figure_urls
+        original_assets = self.module.maybe_extract_figure_assets
         try:
-            self.module.maybe_extract_arxiv_figure_urls = lambda paper_id, config_path, intent: ["https://example.com/a.png"]
-            self.module.maybe_extract_pdf_figure_urls = lambda source_spec, config_path: ["https://example.com/b.png"]
+            self.module.maybe_extract_figure_assets = lambda source_spec, config_path, intent: {
+                "image_urls": ["https://example.com/a.png"],
+                "hero_image_url": "https://example.com/a.png",
+                "method_figure_urls": [],
+                "result_figure_urls": [],
+                "insight_figure_urls": [],
+            }
             source = self.module.SourceSpec(
                 input_value="2401.12345",
                 source_kind="arxiv_id",
@@ -120,16 +124,19 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
             )
             urls = self.module.maybe_extract_figure_urls(source, None, "architecture")
         finally:
-            self.module.maybe_extract_arxiv_figure_urls = original_arxiv
-            self.module.maybe_extract_pdf_figure_urls = original_pdf
+            self.module.maybe_extract_figure_assets = original_assets
         self.assertEqual(urls, ["https://example.com/a.png"])
 
     def test_maybe_extract_figure_urls_falls_back_to_pdf(self):
-        original_arxiv = self.module.maybe_extract_arxiv_figure_urls
-        original_pdf = self.module.maybe_extract_pdf_figure_urls
+        original_assets = self.module.maybe_extract_figure_assets
         try:
-            self.module.maybe_extract_arxiv_figure_urls = lambda paper_id, config_path, intent: []
-            self.module.maybe_extract_pdf_figure_urls = lambda source_spec, config_path: ["https://example.com/pdf-fig.png"]
+            self.module.maybe_extract_figure_assets = lambda source_spec, config_path, intent: {
+                "image_urls": ["https://example.com/pdf-fig.png"],
+                "hero_image_url": "https://example.com/pdf-fig.png",
+                "method_figure_urls": [],
+                "result_figure_urls": [],
+                "insight_figure_urls": [],
+            }
             source = self.module.SourceSpec(
                 input_value="/tmp/test.pdf",
                 source_kind="local_pdf",
@@ -147,9 +154,22 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
             )
             urls = self.module.maybe_extract_figure_urls(source, None, "architecture")
         finally:
-            self.module.maybe_extract_arxiv_figure_urls = original_arxiv
-            self.module.maybe_extract_pdf_figure_urls = original_pdf
+            self.module.maybe_extract_figure_assets = original_assets
         self.assertEqual(urls, ["https://example.com/pdf-fig.png"])
+
+    def test_classify_arxiv_figure_assets_assigns_semantic_slots(self):
+        assets = self.module.classify_arxiv_figure_assets(
+            [
+                {"figure_number": 1, "image_url": "https://example.com/teaser.png", "caption": "Teaser overview of the system."},
+                {"figure_number": 2, "image_url": "https://example.com/method.png", "caption": "Method architecture and pipeline."},
+                {"figure_number": 3, "image_url": "https://example.com/result.png", "caption": "Result transfer performance and evaluation."},
+                {"figure_number": 4, "image_url": "https://example.com/qual.png", "caption": "Qualitative analysis of failure cases."},
+            ]
+        )
+        self.assertEqual(assets["hero_image_url"], "https://example.com/teaser.png")
+        self.assertEqual(assets["method_figure_urls"], ["https://example.com/method.png"])
+        self.assertEqual(assets["result_figure_urls"], ["https://example.com/result.png"])
+        self.assertEqual(assets["insight_figure_urls"], ["https://example.com/qual.png"])
 
     def test_maybe_extract_pdf_figure_urls_prefers_caption_aligned_figures(self):
         original_resolve = self.module.resolve_pdf_source_for_figures
@@ -312,15 +332,108 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
         self.assertIn("一句话看懂这篇论文。", markdown)
         self.assertIn("| 指标 | 结果 |", markdown)
         self.assertIn('title: "Example Paper"', markdown)
-        self.assertIn("authors:\n  - Alice\n  - Bob", markdown)
+        self.assertIn('slug: "example-paper"', markdown)
+        self.assertIn("type: source", markdown)
+        self.assertIn('material_type: "paper"', markdown)
+        self.assertIn('authors:\n  - "Alice"\n  - "Bob"', markdown)
         self.assertIn('affiliation: "Example Lab"', markdown)
         self.assertIn('code_url: "https://github.com/example/repo"', markdown)
-        self.assertIn("keywords:\n  - planner\n  - tool-use", markdown)
-        self.assertIn("tags:\n  - paper\n  - agent", markdown)
-        self.assertIn("images:\n  - https://example.com/fig1.png", markdown)
+        self.assertIn('summary: "This paper studies tool use."', markdown)
+        self.assertIn("links:\n  original: \"https://arxiv.org/abs/1234.5678\"", markdown)
+        self.assertIn("raw_refs:\n  - \"https://arxiv.org/html/1234.5678v1\"", markdown)
+        self.assertIn("image_paths: []", markdown)
+        self.assertIn('keywords:\n  - "planner"\n  - "tool-use"', markdown)
+        self.assertIn('tags:\n  - "paper"\n  - "agent"', markdown)
+        self.assertIn('images:\n  - "https://example.com/fig1.png"', markdown)
         self.assertIn('hero_image: "https://example.com/fig1.png"', markdown)
-        self.assertIn("related_topics:\n  - tool-use-workflows", markdown)
+        self.assertIn('related_topics:\n  - "tool-use-workflows"', markdown)
         self.assertNotIn("\n        title:", markdown)
+
+    def test_command_write_like_extract_figures_populates_figure_slots(self):
+        module = self.module
+        original_resolve_config = module.resolve_config
+        original_resolve_input_source = module.resolve_input_source
+        original_maybe_extract = module.maybe_extract_figure_assets
+        original_build_markdown = module.build_markdown
+        original_quality_gate = module.quality_gate_payload
+        original_write_note = module.write_note
+        try:
+            module.resolve_config = lambda _: module.AnalyzeConfig(
+                wiki_root=Path("/tmp/wiki"),
+                sources_dir="wiki/sources",
+                output_mode="write",
+                draft_dir=Path("/tmp/draft"),
+                language="zh",
+                r2_base_url="",
+            )
+            module.resolve_input_source = lambda _: module.SourceSpec(
+                input_value="2606.30988",
+                source_kind="arxiv_id",
+                source_url="https://arxiv.org/abs/2606.30988",
+                canonical_url="https://arxiv.org/abs/2606.30988",
+                local_path=None,
+                paper_id="2606.30988",
+                title_hint="MuSe",
+                raw_text="",
+                abstract_text="abstract one. abstract two. abstract three.",
+                publish_date_hint="2026-06-30",
+                authors_hint=["Alice"],
+                affiliation_hint="Stanford University",
+                code_url_hint="https://github.com/example/muse",
+            )
+            module.maybe_extract_figure_assets = lambda *args, **kwargs: {
+                "image_urls": [
+                    "https://example.com/teaser.png",
+                    "https://example.com/method.png",
+                    "https://example.com/result.png",
+                ],
+                "hero_image_url": "https://example.com/teaser.png",
+                "method_figure_urls": ["https://example.com/method.png"],
+                "result_figure_urls": ["https://example.com/result.png"],
+                "insight_figure_urls": [],
+            }
+            module.quality_gate_payload = lambda **kwargs: (True, [])
+            captured = {}
+            def fake_build_markdown(**kwargs):
+                captured["kwargs"] = kwargs
+                return "content"
+            module.build_markdown = fake_build_markdown
+            module.write_note = lambda path, content: captured.setdefault("written", (str(path), content))
+            args = module.build_parser().parse_args([
+                "write",
+                "--config", "config.yaml",
+                "--input", "2606.30988",
+                "--title", "MuSe",
+                "--summary", "summary",
+                "--background-context", "背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景背景",
+                "--research-problem", "问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题问题",
+                "--core-method", "核心方法核心方法核心方法核心方法核心方法核心方法核心方法核心方法核心方法核心方法",
+                "--method-breakdown", "step 1",
+                "--method-breakdown", "step 2",
+                "--experimental-signal", "improves by 20% vs baseline",
+                "--insight", "insight 1",
+                "--insight", "insight 2",
+                "--critical-note", "critical note",
+                "--result-table-markdown", "| 指标 | 结果 |\n| --- | --- |\n| Success | 72% |",
+                "--extract-figures",
+            ])
+            rc = module.command_write_like(args)
+        finally:
+            module.resolve_config = original_resolve_config
+            module.resolve_input_source = original_resolve_input_source
+            module.maybe_extract_figure_assets = original_maybe_extract
+            module.build_markdown = original_build_markdown
+            module.quality_gate_payload = original_quality_gate
+            module.write_note = original_write_note
+        self.assertEqual(rc, 0)
+        self.assertEqual(captured["kwargs"]["note_slug"], "muse")
+        self.assertEqual(captured["kwargs"]["hero_image_url"], "https://example.com/teaser.png")
+        self.assertEqual(captured["kwargs"]["method_figure_urls"], ["https://example.com/method.png"])
+        self.assertEqual(captured["kwargs"]["result_figure_urls"], ["https://example.com/result.png"])
+        self.assertEqual(
+            captured["kwargs"]["image_urls"],
+            ["https://example.com/teaser.png", "https://example.com/method.png", "https://example.com/result.png"],
+        )
 
     def test_derive_fields_from_text_prefers_abstract(self):
         fields = self.module.derive_fields_from_text(
@@ -354,6 +467,16 @@ class PaperAnalyzeSkillTests(unittest.TestCase):
         self.assertEqual(
             self.module.extract_affiliation_from_html(html),
             "Stanford University; Toyota Research Institute",
+        )
+
+    def test_extract_authors_from_citation_meta_reorders_last_first(self):
+        html = """
+        <meta name="citation_author" content="Clark, Jaden" />
+        <meta name="citation_author" content="Wang, Changhao" />
+        """
+        self.assertEqual(
+            self.module.extract_authors_from_html(html),
+            ["Jaden Clark", "Changhao Wang"],
         )
 
     def test_extract_affiliation_from_html_ignores_numbered_body_text(self):

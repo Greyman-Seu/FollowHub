@@ -53,7 +53,115 @@ def digest(date, counts):
     return {"date": date, "counts": counts, "sections": sections}
 
 
+def write_valid_rss_artifacts(repo, run_date):
+    (repo / "rss-daily-output" / run_date / "fetch").mkdir(parents=True)
+    (repo / "rss-collect-output").mkdir(parents=True)
+    (repo / "rss-daily-output" / run_date / "verify.json").write_text(
+        json.dumps({"ok": True, "content_checks": {"story_count": 1}}),
+        encoding="utf-8",
+    )
+    (repo / "rss-daily-output" / run_date / "daily-digest.json").write_text(
+        json.dumps(digest(run_date, {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0})),
+        encoding="utf-8",
+    )
+    (repo / "rss-collect-output" / "{0}-raw.json".format(run_date)).write_text(
+        json.dumps(
+            {"sources": [{"type": "wechat", "status": "ok", "item_count": 1}]}
+        ),
+        encoding="utf-8",
+    )
+    (repo / "rss-daily-output" / run_date / "fetch" / "fetched_items.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "wechat:0",
+                        "source_type": "wechat",
+                        "fetch_status": "fetched-html",
+                        "title": "标题",
+                        "summary": "摘要",
+                        "content_text": "这是一段已验证的微信正文内容。",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 class DailySuccessEvaluationTest(unittest.TestCase):
+    def test_arxiv_schedule_uses_weekday_boundaries(self):
+        self.assertTrue(checker.arxiv_required_for_date("2026-08-28"))
+        self.assertFalse(checker.arxiv_required_for_date("2026-08-29"))
+        self.assertFalse(checker.arxiv_required_for_date("2026-08-30"))
+        self.assertTrue(checker.arxiv_required_for_date("2026-08-31"))
+
+    def test_weekend_local_counts_ignore_missing_or_failed_arxiv_verification(self):
+        for run_date, write_failed_arxiv in (
+            ("2026-08-29", False),
+            ("2026-08-30", True),
+        ):
+            with self.subTest(run_date=run_date), tempfile.TemporaryDirectory() as tmpdir:
+                repo = Path(tmpdir)
+                write_valid_rss_artifacts(repo, run_date)
+                if write_failed_arxiv:
+                    arxiv_output = repo / "arxiv-daily-output" / run_date
+                    arxiv_output.mkdir(parents=True)
+                    (arxiv_output / "verify.json").write_text(
+                        json.dumps(
+                            {
+                                "ok": False,
+                                "daily_item_count": 99,
+                                "blocker": "Official arXiv listing date does not match.",
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                result = checker.expected_local_counts(repo, run_date)
+
+                self.assertTrue(result["ok"])
+                self.assertEqual(0, result["counts"]["arxiv"])
+                self.assertEqual(["arxiv"], result["skipped_sources"])
+
+    def test_weekday_local_counts_still_require_arxiv_verification(self):
+        run_date = "2026-08-31"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            write_valid_rss_artifacts(repo, run_date)
+
+            result = checker.expected_local_counts(repo, run_date)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("missing local verification artifacts", result["reason"])
+        self.assertIn(
+            "arxiv-daily-output/{0}/verify.json".format(run_date),
+            result["missing"][0],
+        )
+
+    def test_weekend_local_counts_reject_arxiv_items(self):
+        run_date = "2026-08-29"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            write_valid_rss_artifacts(repo, run_date)
+            digest_path = repo / "rss-daily-output" / run_date / "daily-digest.json"
+            payload = json.loads(digest_path.read_text(encoding="utf-8"))
+            payload["sections"].append(
+                {
+                    "source_type": "arxiv",
+                    "title": "arxiv",
+                    "count": 1,
+                    "items": [item("arxiv:unexpected", "arxiv", run_date)],
+                }
+            )
+            digest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+            result = checker.expected_local_counts(repo, run_date)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual("weekend RSS digest contains arXiv items", result["reason"])
+        self.assertEqual(["arxiv"], result["skipped_sources"])
+
     def test_all_x_sources_failing_is_unhealthy(self):
         health = checker.summarize_collection_health(
             {
@@ -287,6 +395,69 @@ class DailySuccessEvaluationTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual("remote source count mismatch", result["reason"])
 
+    def test_weekend_remote_payload_accepts_empty_arxiv_section(self):
+        run_date = "2026-08-29"
+        expected_counts = {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0}
+        unexpected_payload = digest(run_date, expected_counts)
+        unexpected_payload["sections"].append(
+            {
+                "source_type": "arxiv",
+                "title": "arxiv",
+                "count": 0,
+                "items": [],
+            }
+        )
+        result = checker.evaluate_remote_payloads(
+            run_date=run_date,
+            expected_counts=expected_counts,
+            daily=unexpected_payload,
+            latest=unexpected_payload,
+            source_payloads={
+                "arxiv": {"items": []},
+                "wechat": {"items": unexpected_payload["sections"][0]["items"]},
+            },
+            skipped_sources=["arxiv"],
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(0, result["source_today_counts"]["arxiv"])
+
+    def test_weekend_remote_payload_rejects_same_day_arxiv_source_item(self):
+        run_date = "2026-08-29"
+        expected_counts = {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0}
+        payload = digest(run_date, expected_counts)
+        result = checker.evaluate_remote_payloads(
+            run_date=run_date,
+            expected_counts=expected_counts,
+            daily=payload,
+            latest=payload,
+            source_payloads={
+                "arxiv": {"items": [item("arxiv:unexpected", "arxiv", run_date)]},
+                "wechat": {"items": payload["sections"][0]["items"]},
+            },
+            skipped_sources=["arxiv"],
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual("remote source count mismatch", result["reason"])
+        self.assertEqual("arxiv", result["source"])
+
+    def test_weekend_remote_payload_accepts_no_same_day_arxiv_source_items(self):
+        run_date = "2026-08-29"
+        expected_counts = {"arxiv": 0, "wechat": 1, "x": 0, "bilibili": 0}
+        payload = digest(run_date, expected_counts)
+        result = checker.evaluate_remote_payloads(
+            run_date=run_date,
+            expected_counts=expected_counts,
+            daily=payload,
+            latest=payload,
+            source_payloads={
+                "arxiv": {"items": [item("arxiv:old", "arxiv", "2026-08-28")]},
+                "wechat": {"items": payload["sections"][0]["items"]},
+            },
+            skipped_sources=["arxiv"],
+        )
+        self.assertTrue(result["ok"])
+        self.assertEqual(0, result["source_today_counts"]["arxiv"])
+
     def test_section_count_mismatch_fails(self):
         run_date = "2026-08-26"
         counts = {"arxiv": 1, "wechat": 0, "x": 0, "bilibili": 0}
@@ -330,6 +501,24 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("2026-08-26", prompt)
         self.assertIn("standalone workers", prompt)
 
+    def test_weekend_prompt_runs_rss_only(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            prompt_path = Path(temporary_dir) / "prompt.md"
+            prompt_path.write_text("Follow the injected date strategy.", encoding="utf-8")
+            prompt = runner.build_prompt(prompt_path, "2026-08-29")
+        self.assertIn("只运行 RSS", prompt)
+        self.assertIn("不要启动、重试、校验或发布 arXiv", prompt)
+        self.assertNotIn("这是工作日", prompt)
+
+    def test_weekday_prompt_runs_both_pipelines(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            prompt_path = Path(temporary_dir) / "prompt.md"
+            prompt_path.write_text("Follow the injected date strategy.", encoding="utf-8")
+            prompt = runner.build_prompt(prompt_path, "2026-08-31")
+        self.assertIn("这是工作日", prompt)
+        self.assertIn("运行 arXiv 和 RSS 两条生产流水线", prompt)
+        self.assertNotIn("只运行 RSS", prompt)
+
     def test_success_message_contains_counts_and_link(self):
         message = runner.build_success_message(
             "2026-08-26",
@@ -343,6 +532,18 @@ class ScheduledRunnerTest(unittest.TestCase):
         self.assertIn("共 6 条", message)
         self.assertIn("X/Twitter 1", message)
         self.assertIn("https://tenstep.top/follow/", message)
+
+    def test_weekend_success_message_reports_arxiv_as_skipped(self):
+        message = runner.build_success_message(
+            "2026-08-29",
+            {
+                "counts": {"arxiv": 0, "wechat": 2, "x": 0, "bilibili": 0},
+                "total_count": 2,
+                "skipped_sources": ["arxiv"],
+            },
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("arXiv：周末按计划跳过", message)
 
     def test_failure_message_explains_x_outage(self):
         message = runner.build_failure_message(
@@ -387,11 +588,26 @@ class ScheduledRunnerTest(unittest.TestCase):
     def test_pending_message_mentions_retry(self):
         message = runner.build_pending_message(
             "2026-08-26",
-            {"reason": "missing local verification artifacts"},
+            {
+                "reason": "missing local verification artifacts",
+                "skipped_sources": ["arxiv"],
+            },
             "https://tenstep.top/follow/",
         )
         self.assertIn("仍在重试", message)
         self.assertIn("下一次定时触发", message)
+        self.assertIn("arXiv：周末按计划跳过", message)
+
+    def test_weekend_failure_message_reports_arxiv_as_skipped(self):
+        message = runner.build_failure_message(
+            "2026-08-29",
+            {
+                "reason": "RSS verification did not pass",
+                "skipped_sources": ["arxiv"],
+            },
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("arXiv：周末按计划跳过", message)
 
     def test_notification_idempotency_key_changes_with_message(self):
         first = runner.build_notification_idempotency_key(

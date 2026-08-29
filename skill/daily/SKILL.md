@@ -1,27 +1,33 @@
 ---
 name: daily
-description: Use when the user asks to run, publish, backfill, or check today's FollowHub daily. Unless the user explicitly limits scope to one source, run both arXiv and RSS daily workflows and publish their completed results to the Follow page.
+description: Use when the user asks to run, publish, backfill, or check today's FollowHub daily. Run arXiv and RSS on weekdays, RSS only on Saturday and Sunday, and publish the completed results to the Follow page unless the user explicitly limits the request to one source.
 ---
 
 # Daily
 
-Run FollowHub's two production daily pipelines as one coordinated workflow:
+Run FollowHub's production daily pipelines as one coordinated workflow:
 
 - `arxiv-daily`
 - `rss-daily`
 
-Do not interpret “daily” as arXiv-only or RSS-only. A source-specific request such as “run arXiv daily only” is the only reason to skip the other pipeline.
+The combined daily workflow is date-aware in Asia/Shanghai:
+
+- Monday through Friday: run both `arxiv-daily` and `rss-daily`.
+- Saturday and Sunday: run `rss-daily` only; do not collect, process, publish, or verify arXiv, and require the day's arXiv count and same-day source item count to be zero.
+
+An explicit source-specific request such as “run arXiv daily only” remains outside this combined schedule and may run that source independently.
 
 ## Procedure
 
 1. Resolve `FOLLOWHUB_CONFIG` or repo-local `followhub.yaml`.
-2. Start raw acquisition for arXiv and RSS concurrently.
-3. Run each pipeline according to its own `SKILL.md` contract:
+2. Determine the requested date in Asia/Shanghai and apply the weekday/weekend policy above.
+3. On weekdays, start raw acquisition for arXiv and RSS concurrently. On weekends, start RSS only.
+4. Run each scheduled pipeline according to its own `SKILL.md` contract:
    - `arxiv-daily`: collect → title-prefilter → filter → enrich → publish → verify
    - `rss-daily`: collect → normalize → fetch → dedupe → cluster → prefilter → filter → enrich → digest → publish → verify
-4. Delegate all paper/item-level review and completion work to subagents or equivalent worker delegation. The main agent only orchestrates batches, validates and merges artifacts, invokes deterministic tools, and verifies publication.
-5. Publish each completed pipeline independently. Same-day publish operations must preserve and merge the other source sections through the existing Follow publish path.
-6. Verify the final page data contains both updates:
+5. Delegate all paper/item-level review and completion work to subagents or equivalent worker delegation. The main agent only orchestrates batches, validates and merges artifacts, invokes deterministic tools, and verifies publication.
+6. Publish each completed scheduled pipeline independently. Weekday same-day publish operations must preserve and merge the other source sections through the existing Follow publish path. Weekend publishes must contain the RSS result with no arXiv items and an arXiv count of zero; an empty arXiv section emitted by the common digest schema is allowed.
+7. Verify the final page data contains every scheduled update:
    - `follow/latest.json`
    - `follow/daily/YYYY-MM-DD.json`
    - affected `follow/sources/*.json`
@@ -32,7 +38,7 @@ When a worker times out, is unavailable, or emits invalid artifacts, keep that p
 
 ## Reporting
 
-Report the arXiv and RSS status separately, including raw counts, selected counts, published paths, verification result, and any pipeline still pending retries.
+Report the arXiv and RSS status separately, including raw counts, selected counts, published paths, verification result, and any pipeline still pending retries. On weekends, report arXiv as skipped by schedule rather than failed or pending.
 
 ## Scheduled Automation
 
@@ -45,6 +51,7 @@ python3 skill/daily/scripts/install_scheduled_daily.py
 The timer runs at 07:00 Asia/Shanghai and then every two hours through 23:00. The runner:
 
 - uses a per-date file lock so attempts cannot overlap
+- keeps the daily timer active on weekends for RSS while skipping arXiv by the Asia/Shanghai run date
 - checks local verification artifacts and the actual R2 JSON before starting Codex
 - runs Codex in an unattended environment, so worker fan-out must use standalone/equivalent delegation instead of collaboration-thread subagents
 - by default treats all configured X/Twitter RSS feeds failing acquisition as incomplete, even if other sources published successfully

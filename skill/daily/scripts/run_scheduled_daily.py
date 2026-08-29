@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from check_daily_success import check_daily_success
+from check_daily_success import arxiv_required_for_date, check_daily_success
 
 
 SUCCESS_SCHEMA_VERSION = 2
@@ -60,6 +60,15 @@ def build_prompt(
     allow_unavailable_sources: Optional[List[str]] = None,
 ) -> str:
     body = prompt_path.read_text(encoding="utf-8").strip()
+    if arxiv_required_for_date(run_date):
+        schedule = (
+            "日期策略：这是工作日，运行 arXiv 和 RSS 两条生产流水线。\n"
+        )
+    else:
+        schedule = (
+            "日期策略：这是周六或周日，只运行 RSS 生产流水线；不要启动、重试、校验或发布 arXiv。\n"
+            "当天 arXiv 按计划跳过，最终 digest 和远端数据中的 arXiv 计数必须为 0。\n"
+        )
     optional_sources = normalize_source_names(allow_unavailable_sources)
     override = ""
     if optional_sources:
@@ -70,9 +79,17 @@ def build_prompt(
         ).format(labels)
     return (
         "本次自动化运行日期是 {0}（Asia/Shanghai）。\n"
-        "只处理这个日期，并严格执行下面的生产任务。\n\n{1}\n"
-        "{2}"
-    ).format(run_date, body, override)
+        "只处理这个日期，并严格执行下面的生产任务。\n"
+        "{1}\n{2}\n"
+        "{3}"
+    ).format(run_date, schedule, body, override)
+
+
+def _skipped_source_summary(result: Dict[str, Any]) -> str:
+    skipped = set(result.get("skipped_sources") or [])
+    if "arxiv" in skipped:
+        return "arXiv：周末按计划跳过"
+    return ""
 
 
 def build_codex_command(
@@ -162,6 +179,9 @@ def build_success_message(run_date: str, result: Dict[str, Any], summary_url: st
         "FollowHub 每日汇总已完成（{0}）".format(run_date),
         "共 {0} 条：{1}。".format(total, _count_summary(result)),
     ]
+    skipped_summary = _skipped_source_summary(result)
+    if skipped_summary:
+        lines.append(skipped_summary + "。")
     x_health = _x_health_summary(result)
     if x_health:
         lines.append(x_health + "。")
@@ -178,6 +198,9 @@ def build_failure_message(run_date: str, result: Dict[str, Any], summary_url: st
         "FollowHub 每日汇总未完成（{0}）".format(run_date),
         "截至 23:00 最后一次重试仍未通过：{0}。".format(reason),
     ]
+    skipped_summary = _skipped_source_summary(result)
+    if skipped_summary:
+        lines.append(skipped_summary + "。")
     x_health = _x_health_summary(result)
     if x_health:
         lines.append(x_health + "。")
@@ -195,6 +218,9 @@ def build_pending_message(run_date: str, result: Dict[str, Any], summary_url: st
         "FollowHub 每日汇总仍在重试（{0}）".format(run_date),
         "本轮未完成：{0}。".format(reason),
     ]
+    skipped_summary = _skipped_source_summary(result)
+    if skipped_summary:
+        lines.append(skipped_summary + "。")
     x_health = _x_health_summary(result)
     if x_health:
         lines.append(x_health + "。")

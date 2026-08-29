@@ -8,11 +8,25 @@ import importlib.util
 import json
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 
 SOURCE_TYPES = ("arxiv", "wechat", "x", "bilibili")
+
+
+def arxiv_required_for_date(run_date: str) -> bool:
+    """Return whether the combined daily workflow should run arXiv."""
+    return date.fromisoformat(run_date).isoweekday() <= 5
+
+
+def _add_schedule_context(
+    result: Dict[str, Any], *, arxiv_required: bool
+) -> Dict[str, Any]:
+    if not arxiv_required:
+        result["skipped_sources"] = ["arxiv"]
+    return result
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -210,31 +224,37 @@ def expected_local_counts(
     *,
     allow_unavailable_sources: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
+    arxiv_required = arxiv_required_for_date(run_date)
     arxiv_verify_path = repo / "arxiv-daily-output" / run_date / "verify.json"
     rss_verify_path = repo / "rss-daily-output" / run_date / "verify.json"
     rss_digest_path = repo / "rss-daily-output" / run_date / "daily-digest.json"
     rss_collect_path = repo / "rss-collect-output" / "{0}-raw.json".format(run_date)
     rss_fetch_path = repo / "rss-daily-output" / run_date / "fetch" / "fetched_items.json"
 
+    required_paths = [
+        rss_verify_path,
+        rss_digest_path,
+        rss_collect_path,
+        rss_fetch_path,
+    ]
+    if arxiv_required:
+        required_paths.insert(0, arxiv_verify_path)
     missing = [
         str(path)
-        for path in (
-            arxiv_verify_path,
-            rss_verify_path,
-            rss_digest_path,
-            rss_collect_path,
-            rss_fetch_path,
-        )
+        for path in required_paths
         if not path.exists()
     ]
     if missing:
-        return {
-            "ok": False,
-            "reason": "missing local verification artifacts",
-            "missing": missing,
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "missing local verification artifacts",
+                "missing": missing,
+            },
+            arxiv_required=arxiv_required,
+        )
 
-    arxiv_verify = load_json(arxiv_verify_path)
+    arxiv_verify = load_json(arxiv_verify_path) if arxiv_required else {}
     rss_verify = load_json(rss_verify_path)
     rss_digest = load_json(rss_digest_path)
     rss_fetch = load_json(rss_fetch_path)
@@ -249,14 +269,18 @@ def expected_local_counts(
         if "x" in allowed_unavailable_sources:
             ignored_unavailable_sources.append("x")
         else:
-            return {
-                "ok": False,
-                "reason": "X/Twitter RSS collection is unavailable",
-                "collection_health": collection_health,
-            }
+            return _add_schedule_context(
+                {
+                    "ok": False,
+                    "reason": "X/Twitter RSS collection is unavailable",
+                    "collection_health": collection_health,
+                },
+                arxiv_required=arxiv_required,
+            )
 
-    arxiv_ok = bool(arxiv_verify.get("ok", True)) and not list(
-        arxiv_verify.get("incomplete_summary_ids") or []
+    arxiv_ok = not arxiv_required or (
+        bool(arxiv_verify.get("ok", True))
+        and not list(arxiv_verify.get("incomplete_summary_ids") or [])
     )
     rss_ok = bool(rss_verify.get("ok", False))
     if not arxiv_ok or not rss_ok:
@@ -275,58 +299,90 @@ def expected_local_counts(
         }
         if ignored_unavailable_sources:
             result["ignored_unavailable_sources"] = ignored_unavailable_sources
-        return result
+        return _add_schedule_context(result, arxiv_required=arxiv_required)
 
     wechat_fetch = fetch_health.get("wechat") or {}
     wechat_item_count = int(wechat_fetch.get("item_count", 0) or 0)
     verified_body_count = int(wechat_fetch.get("verified_body_count", 0) or 0)
     if wechat_item_count > 0 and verified_body_count <= 0:
-        return {
-            "ok": False,
-            "reason": "WeChat articles did not yield verified article bodies",
-            "fetch_health": fetch_health,
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "WeChat articles did not yield verified article bodies",
+                "fetch_health": fetch_health,
+            },
+            arxiv_required=arxiv_required,
+        )
 
     invalid_wechat = invalid_selected_wechat_items(rss_digest, rss_fetch)
     if invalid_wechat:
-        return {
-            "ok": False,
-            "reason": "Published WeChat items appear to rely only on title/summary fallback",
-            "fetch_health": fetch_health,
-            "invalid_wechat_items": invalid_wechat[:10],
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "Published WeChat items appear to rely only on title/summary fallback",
+                "fetch_health": fetch_health,
+                "invalid_wechat_items": invalid_wechat[:10],
+            },
+            arxiv_required=arxiv_required,
+        )
 
-    counts = _integer_counts(rss_digest.get("counts") or {})
-    counts["arxiv"] = int(arxiv_verify.get("daily_item_count", 0) or 0)
+    digest_counts = _integer_counts(rss_digest.get("counts") or {})
+    counts = dict(digest_counts)
+    counts["arxiv"] = (
+        int(arxiv_verify.get("daily_item_count", 0) or 0) if arxiv_required else 0
+    )
     try:
         local_section_counts = _section_counts(rss_digest)
     except ValueError as exc:
-        return {
-            "ok": False,
-            "reason": str(exc),
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": str(exc),
+            },
+            arxiv_required=arxiv_required,
+        )
+    if not arxiv_required and (
+        digest_counts["arxiv"] != 0
+        or local_section_counts["arxiv"] != 0
+    ):
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "weekend RSS digest contains arXiv items",
+            },
+            arxiv_required=arxiv_required,
+        )
     expected_section_counts = {source: counts[source] for source in SOURCE_TYPES if source != "arxiv"}
     actual_section_counts = {source: int(local_section_counts.get(source, 0) or 0) for source in expected_section_counts}
     if actual_section_counts != expected_section_counts:
-        return {
-            "ok": False,
-            "reason": "local RSS digest counts do not match section payload",
-            "rss_digest_counts": expected_section_counts,
-            "rss_digest_section_counts": actual_section_counts,
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "local RSS digest counts do not match section payload",
+                "rss_digest_counts": expected_section_counts,
+                "rss_digest_section_counts": actual_section_counts,
+            },
+            arxiv_required=arxiv_required,
+        )
     rss_story_count = int(
         ((rss_verify.get("content_checks") or {}).get("story_count", 0)) or 0
     )
     expected_rss_count = sum(counts[source] for source in SOURCE_TYPES if source != "arxiv")
     if rss_story_count != expected_rss_count:
-        return {
-            "ok": False,
-            "reason": "RSS digest and verification counts differ",
-            "rss_story_count": rss_story_count,
-            "rss_digest_count": expected_rss_count,
-        }
+        return _add_schedule_context(
+            {
+                "ok": False,
+                "reason": "RSS digest and verification counts differ",
+                "rss_story_count": rss_story_count,
+                "rss_digest_count": expected_rss_count,
+            },
+            arxiv_required=arxiv_required,
+        )
     if sum(counts.values()) <= 0:
-        return {"ok": False, "reason": "daily digest contains no selected items"}
+        return _add_schedule_context(
+            {"ok": False, "reason": "daily digest contains no selected items"},
+            arxiv_required=arxiv_required,
+        )
     result: Dict[str, Any] = {
         "ok": True,
         "counts": counts,
@@ -335,7 +391,7 @@ def expected_local_counts(
     }
     if ignored_unavailable_sources:
         result["ignored_unavailable_sources"] = ignored_unavailable_sources
-    return result
+    return _add_schedule_context(result, arxiv_required=arxiv_required)
 
 
 def evaluate_remote_payloads(
@@ -345,6 +401,7 @@ def evaluate_remote_payloads(
     daily: Mapping[str, Any],
     latest: Mapping[str, Any],
     source_payloads: Mapping[str, Mapping[str, Any]],
+    skipped_sources: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     if str(daily.get("date") or "") != run_date:
         return {"ok": False, "reason": "remote daily date mismatch"}
@@ -359,6 +416,8 @@ def evaluate_remote_payloads(
         latest_section_counts = _section_counts(latest)
     except ValueError as exc:
         return {"ok": False, "reason": str(exc)}
+
+    skipped = set(normalize_source_names(skipped_sources))
 
     if daily_counts != expected or daily_section_counts != expected:
         return {
@@ -379,7 +438,7 @@ def evaluate_remote_payloads(
 
     source_today_counts: Dict[str, int] = {}
     for source, expected_count in expected.items():
-        if expected_count <= 0:
+        if expected_count <= 0 and source not in skipped:
             continue
         payload = source_payloads.get(source)
         if payload is None:
@@ -421,7 +480,11 @@ def _load_follow_publish_module(repo: Path) -> Any:
 
 
 def fetch_remote_payloads(
-    repo: Path, run_date: str, expected_counts: Mapping[str, int]
+    repo: Path,
+    run_date: str,
+    expected_counts: Mapping[str, int],
+    *,
+    verify_sources: Optional[Iterable[str]] = None,
 ) -> Dict[str, Any]:
     module = _load_follow_publish_module(repo)
     rcli_module = module.load_rcli_module()
@@ -431,8 +494,9 @@ def fetch_remote_payloads(
         return {"daily": daily or {}, "latest": latest or {}, "sources": {}}
 
     sources: Dict[str, Dict[str, Any]] = {}
+    required_sources = set(normalize_source_names(verify_sources))
     for source, count in _integer_counts(expected_counts).items():
-        if count <= 0:
+        if count <= 0 and source not in required_sources:
             continue
         payload = module.fetch_remote_json(
             rcli_module, "follow", "sources/{0}.json".format(source)
@@ -459,27 +523,39 @@ def check_daily_success(
 
     os.environ["FOLLOWHUB_CONFIG"] = str(config_path)
     try:
-        remote = fetch_remote_payloads(repo, run_date, local["counts"])
+        skipped_sources = list(local.get("skipped_sources") or [])
+        remote = fetch_remote_payloads(
+            repo,
+            run_date,
+            local["counts"],
+            verify_sources=skipped_sources,
+        )
         result = evaluate_remote_payloads(
             run_date=run_date,
             expected_counts=local["counts"],
             daily=remote["daily"],
             latest=remote["latest"],
             source_payloads=remote["sources"],
+            skipped_sources=skipped_sources,
         )
         result["collection_health"] = local.get("collection_health") or {}
         if local.get("ignored_unavailable_sources"):
             result["ignored_unavailable_sources"] = list(
                 local.get("ignored_unavailable_sources") or []
             )
+        if local.get("skipped_sources"):
+            result["skipped_sources"] = list(local.get("skipped_sources") or [])
         return result
     except Exception as exc:
-        return {
+        result = {
             "ok": False,
             "reason": "remote verification failed",
             "error_type": type(exc).__name__,
             "error": str(exc),
         }
+        if local.get("skipped_sources"):
+            result["skipped_sources"] = list(local.get("skipped_sources") or [])
+        return result
 
 
 def build_parser() -> argparse.ArgumentParser:

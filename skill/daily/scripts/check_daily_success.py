@@ -67,6 +67,8 @@ def count_items_for_date(items: Iterable[Mapping[str, Any]], run_date: str) -> i
 
 def _collection_error_kind(message: str) -> str:
     lowered = message.lower()
+    if "410" in lowered or "gone" in lowered:
+        return "gone"
     if "403" in lowered or "forbidden" in lowered:
         return "forbidden"
     if "timed out" in lowered or "timeout" in lowered:
@@ -193,7 +195,10 @@ def summarize_collection_health(payload: Mapping[str, Any]) -> Dict[str, Any]:
             "total": len(rows),
             "ok": sum(row.get("status") == "ok" for row in rows),
             "error": sum(row.get("status") == "error" for row in rows),
-            "item_count": sum(int(row.get("item_count", 0) or 0) for row in rows),
+            "item_count": sum(
+                int(row.get("item_count", row.get("total_items", 0)) or 0)
+                for row in rows
+            ),
             "error_kinds": error_kinds,
         }
     return health
@@ -255,12 +260,22 @@ def expected_local_counts(
     )
     rss_ok = bool(rss_verify.get("ok", False))
     if not arxiv_ok or not rss_ok:
-        return {
+        reason = "local verification did not pass"
+        if not arxiv_ok and str(arxiv_verify.get("blocker") or "").strip():
+            reason = "arXiv verification did not pass: {0}".format(
+                str(arxiv_verify["blocker"]).strip()
+            )
+        result = {
             "ok": False,
-            "reason": "local verification did not pass",
+            "reason": reason,
             "arxiv_ok": arxiv_ok,
             "rss_ok": rss_ok,
+            "collection_health": collection_health,
+            "fetch_health": fetch_health,
         }
+        if ignored_unavailable_sources:
+            result["ignored_unavailable_sources"] = ignored_unavailable_sources
+        return result
 
     wechat_fetch = fetch_health.get("wechat") or {}
     wechat_item_count = int(wechat_fetch.get("item_count", 0) or 0)

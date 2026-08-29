@@ -119,7 +119,13 @@ def _x_health_summary(result: Dict[str, Any]) -> str:
     errors = int(health.get("error", 0) or 0)
     error_kinds = health.get("error_kinds") or {}
     details = []
-    for key, label in (("dns", "DNS"), ("timeout", "超时"), ("forbidden", "403"), ("other", "其他")):
+    for key, label in (
+        ("dns", "DNS"),
+        ("timeout", "超时"),
+        ("forbidden", "403"),
+        ("gone", "410"),
+        ("other", "其他"),
+    ):
         count = int(error_kinds.get(key, 0) or 0)
         if count:
             details.append("{0} {1}".format(label, count))

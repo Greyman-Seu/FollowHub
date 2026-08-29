@@ -169,8 +169,38 @@ class DailySuccessEvaluationTest(unittest.TestCase):
                 allow_unavailable_sources=["x"],
             )
 
+            (repo / "arxiv-daily-output" / run_date / "verify.json").write_text(
+                json.dumps(
+                    {
+                        "ok": False,
+                        "daily_item_count": 0,
+                        "incomplete_summary_ids": [],
+                        "blocker": "Official arXiv listing is not available yet.",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            pending_result = checker.expected_local_counts(
+                repo,
+                run_date,
+                allow_unavailable_sources=["x"],
+            )
+
         self.assertTrue(result["ok"])
         self.assertEqual(["x"], result["ignored_unavailable_sources"])
+        self.assertFalse(pending_result["ok"])
+        self.assertIn("Official arXiv listing", pending_result["reason"])
+        self.assertEqual({"gone": 1}, pending_result["collection_health"]["x"]["error_kinds"])
+        self.assertEqual(["x"], pending_result["ignored_unavailable_sources"])
+
+        message = runner.build_failure_message(
+            run_date,
+            pending_result,
+            "https://tenstep.top/follow/",
+        )
+        self.assertIn("0/1", message)
+        self.assertIn("410 1", message)
+        self.assertIn("按配置已忽略", message)
 
     def test_expected_local_counts_rejects_wechat_fallback_only_publish(self):
         run_date = "2026-08-26"

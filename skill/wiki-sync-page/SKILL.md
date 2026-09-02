@@ -42,7 +42,12 @@ Expected wiki areas:
 ```bash
 python3 /home/tenstep/workspace/followhub/skill/wiki-sync-page/wiki_sync_page.py inspect --wiki-root /path/to/llm-wiki --page-root /path/to/site
 python3 /home/tenstep/workspace/followhub/skill/wiki-sync-page/wiki_sync_page.py sync --wiki-root /path/to/llm-wiki --page-root /path/to/site
+python3 /home/tenstep/workspace/followhub/skill/wiki-sync-page/wiki_sync_page.py sync --wiki-root /path/to/llm-wiki --page-root /path/to/site --slug <source-slug>
 ```
+
+Use `--slug` for a single-paper publication. It merges that source into
+`sources.json` and rewrites only its detail JSON; it does not regenerate topic,
+synthesis, graph, or other source-detail files.
 
 ## Sync Targets
 
@@ -75,3 +80,4 @@ At minimum this skill should maintain:
 | Re-analyzing papers during sync | Treat wiki notes as the source of truth |
 | Publishing draft or private notes | Sync only public-ready entries |
 | Mixing preview behavior into sync | Keep preview in `md-preview` |
+| Regenerating the full wiki for one paper | Use `sync --slug <source-slug>` |

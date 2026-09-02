@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -65,10 +66,34 @@ Example.
 """,
                 encoding="utf-8",
             )
+            existing_source_path = source_dir / "existing-paper.md"
+            existing_source_path.write_text(
+                """---
+title: "Existing Paper"
+slug: "existing-paper"
+source_type: "paper"
+source_url: "https://example.com/existing"
+date: "2026-08-01"
+---
+# Existing Paper
+
+## 太长不看
+
+Existing.
+""",
+                encoding="utf-8",
+            )
             (wiki_root / "wiki").mkdir(parents=True, exist_ok=True)
             (wiki_root / "wiki" / "graph-data.json").write_text("{}", encoding="utf-8")
             (wiki_root / "wiki" / "topics").mkdir(parents=True, exist_ok=True)
             (wiki_root / "wiki" / "synthesis").mkdir(parents=True, exist_ok=True)
+
+            generated_dir = page_root / "src/data/generated/wiki-sync"
+            generated_dir.mkdir(parents=True, exist_ok=True)
+            (generated_dir / "sources.json").write_text(
+                json.dumps([wiki_sync_page.asdict(wiki_sync_page.parse_note_source(existing_source_path))]),
+                encoding="utf-8",
+            )
 
             args = type("Args", (), {"config": None, "wiki_root": str(wiki_root), "page_root": str(page_root), "slug": "motus2-a-self-evolving-general-world-model-for-dexterous-manipulation", "mode": "sync"})()
             rc = wiki_sync_page.command_sync(args)
@@ -76,6 +101,10 @@ Example.
             self.assertEqual(rc, 0)
             self.assertTrue((page_root / "src/data/generated/wiki-sync/source/motus2-a-self-evolving-general-world-model-for-dexterous-manipulation.json").is_file())
             self.assertTrue((page_root / "src/data/generated/wiki-sync/sources.json").is_file())
+            merged_sources = json.loads((generated_dir / "sources.json").read_text(encoding="utf-8"))
+            self.assertEqual({item["slug"] for item in merged_sources}, {"existing-paper", "motus2-a-self-evolving-general-world-model-for-dexterous-manipulation"})
+            self.assertFalse((page_root / "src/data/generated/wiki-sync/source/existing-paper.json").exists())
+            self.assertFalse((generated_dir / "manifest.json").exists())
             self.assertFalse((page_root / "src/data/generated/wiki-sync/topics.json").is_file())
             self.assertFalse((page_root / "src/data/generated/wiki-sync/synthesis.json").is_file())
 

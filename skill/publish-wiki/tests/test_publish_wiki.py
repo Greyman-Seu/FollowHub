@@ -37,8 +37,22 @@ class PublishWikiTests(unittest.TestCase):
                 ("add", "src/data/generated/wiki-sync"),
                 ("commit", "-m", "Update wiki sync data"),
                 ("push", "origin", "main"),
+                ("rev-parse", "HEAD"),
             ],
         )
+
+    def test_parser_accepts_single_source_slug(self):
+        parser = publish_wiki.build_parser()
+        args = parser.parse_args([
+            "--wiki-root",
+            "/tmp/wiki",
+            "--page-root",
+            "/tmp/page",
+            "--slug",
+            "paper-slug",
+        ])
+        self.assertEqual(args.slug, "paper-slug")
+        self.assertIsNone(args.verify_slug)
 
 
 if __name__ == "__main__":

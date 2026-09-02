@@ -525,11 +525,11 @@ def parse_topic_like(path: Path, kind: str) -> ParsedWikiTopic | ParsedWikiSynth
     return ParsedWikiSynthesis(**parsed)
 
 
-def write_sources(page_root: Path, sources: List[ParsedWikiSource]) -> Path:
+def write_sources(page_root: Path, sources: List[Any]) -> Path:
     output_dir = page_root / "src" / "data" / "generated" / "wiki-sync"
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "sources.json"
-    payload = [asdict(source) for source in sources]
+    payload = [source if isinstance(source, dict) else asdict(source) for source in sources]
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return output_path
 
@@ -544,22 +544,20 @@ def load_json_list(path: Path) -> List[dict[str, Any]]:
     return payload if isinstance(payload, list) else []
 
 
-def merge_single_source(existing_path: Path, source: ParsedWikiSource) -> List[ParsedWikiSource]:
+def merge_single_source(existing_path: Path, source: ParsedWikiSource) -> List[dict[str, Any]]:
     existing = load_json_list(existing_path)
-    merged: List[ParsedWikiSource] = []
+    source_payload = asdict(source)
+    merged: List[dict[str, Any]] = []
     replaced = False
     for item in existing:
         slug = str(item.get("slug") or "")
         if slug == source.slug:
-            merged.append(source)
+            merged.append(source_payload)
             replaced = True
             continue
-        try:
-            merged.append(ParsedWikiSource(**item))
-        except Exception:
-            continue
+        merged.append(item)
     if not replaced:
-        merged.append(source)
+        merged.append(source_payload)
     return merged
 
 
@@ -641,7 +639,7 @@ def command_inspect(args: argparse.Namespace) -> int:
 def command_sync(args: argparse.Namespace) -> int:
     wiki_root, page_root = resolve_roots(args)
     manifest = build_manifest(wiki_root, page_root)
-    manifest_path = write_manifest(page_root, manifest)
+    manifest_path = page_root / "src" / "data" / "generated" / "wiki-sync" / "manifest.json"
     if args.slug:
         source_path = wiki_root / "wiki" / "sources" / f"{args.slug}.md"
         if not source_path.is_file():
@@ -649,8 +647,11 @@ def command_sync(args: argparse.Namespace) -> int:
         parsed_source = parse_note_source(source_path)
         existing_sources_path = page_root / "src" / "data" / "generated" / "wiki-sync" / "sources.json"
         parsed_sources = merge_single_source(existing_sources_path, parsed_source)
+        detail_sources = [parsed_source]
     else:
+        manifest_path = write_manifest(page_root, manifest)
         parsed_sources = [parse_note_source(Path(source)) for source in manifest.sources]
+        detail_sources = parsed_sources
     sources_path = write_sources(page_root, parsed_sources)
     topics_path = None
     syntheses_path = None
@@ -663,7 +664,7 @@ def command_sync(args: argparse.Namespace) -> int:
       parsed_syntheses = [parse_topic_like(Path(item), "synthesis") for item in manifest.synthesis]
       syntheses_path = write_topic_like(page_root, "synthesis", [asdict(item) for item in parsed_syntheses])
       graph_data_path = write_graph_data(page_root, wiki_root)
-    for item in parsed_sources:
+    for item in detail_sources:
       write_detail_json(page_root, "source", item.slug, asdict(item))
     if not args.slug:
       for item in parsed_topics:

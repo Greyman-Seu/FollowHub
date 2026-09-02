@@ -72,8 +72,12 @@ python3 skill/publish-wiki/publish_wiki.py \
   --wiki-root <wiki_root> \
   --page-root <page_root> \
   --config <followhub_config> \
-  --verify-slug <source-slug>
+  --slug <source-slug>
 ```
+
+`--slug` both limits synchronization to that paper and verifies its exact
+public route. `--verify-slug` remains available when a full sync should verify
+one selected source route.
 
 The default public route is:
 

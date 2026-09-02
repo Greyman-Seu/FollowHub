@@ -1,6 +1,6 @@
 ---
 name: publish-source
-description: Use when one analyzed wiki source note should be exported and published for immediate remote reading, including rendered HTML and source JSON upload to R2.
+description: Use when one analyzed wiki source note should be published for immediate online reading on the Page site, including R2 artifacts, page_github push, deployment wait, and public source-route verification.
 ---
 
 # publish-source
@@ -23,7 +23,9 @@ Use this skill when:
 - render one source note into standalone HTML
 - upload the HTML to R2
 - upload the matching source JSON to R2
-- return stable remote URLs
+- commit and push the synchronized Page data to `page_github/main`
+- wait until `https://tenstep.top/wiki/source/<slug>` returns HTTP 200
+- return the verified Page URL as the primary reading URL, plus R2 artifact URLs
 
 ## Inputs
 
@@ -36,9 +38,11 @@ Use this skill when:
 
 - remote HTML URL for direct reading
 - remote JSON URL for structured consumption
+- verified online Page URL for normal user-facing reading
 
 ## Notes
 
 - This skill is per-source only.
 - It does not publish topic or synthesis structure.
 - It does not replace `publish-wiki`.
+- A successful R2 upload is not sufficient when the user asks to publish a Page; the Page repository push and live route verification are mandatory by default.

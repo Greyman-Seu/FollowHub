@@ -201,7 +201,7 @@ def parse_frontmatter(text: str) -> tuple[Dict[str, Any], str]:
 
 
 def slugify(value: str) -> str:
-    value = value.strip().lower()
+    value = value.strip().lower().replace("/", "-")
     value = re.sub(r"[^\w\s-]", "", value, flags=re.UNICODE)
     value = re.sub(r"[-\s]+", "-", value, flags=re.UNICODE).strip("-")
     return value or "source"
@@ -334,7 +334,7 @@ def normalize_label_list(values: Any) -> List[str]:
     for raw in raw_values:
         for part in ORG_SPLIT_PATTERN.split(str(raw)):
             value = part.strip().strip('"')
-            if not value or value.lower() in {"none", "n/a", "unknown"} or value.startswith("暂无"):
+            if not value or value.lower() in {"none", "n/a", "unknown", "[]"} or value.startswith("暂无"):
                 continue
             if value not in labels:
                 labels.append(value)
@@ -386,7 +386,7 @@ def parse_note_source(path: Path) -> ParsedWikiSource:
     ]
     related_topics = normalize_slug_list(frontmatter.get("related_topics"), limit=2) or normalize_slug_list(section_related_topics, limit=2)
     images = frontmatter.get("images") if isinstance(frontmatter.get("images"), list) else []
-    hero_image = first_image_url(intuition) or (images[0] if images else "")
+    hero_image = str(frontmatter.get("hero_image") or "") or first_image_url(intuition) or (images[0] if images else "")
     figures = classify_figures(("method", method), ("results", results), ("insights", insights), ("risks", risks))
     parsed_results_table = parse_markdown_table(results_table)
     primary_domain = str(
@@ -431,7 +431,7 @@ def parse_note_source(path: Path) -> ParsedWikiSource:
         pdfUrl=pdf_url,
         codeUrl=str(frontmatter.get("code_url") or ""),
         translationUrl=translation_url,
-        publishDate=str(frontmatter.get("publish_date") or ""),
+        publishDate=str(frontmatter.get("publish_date") or frontmatter.get("date") or ""),
         authors=frontmatter.get("authors") if isinstance(frontmatter.get("authors"), list) else [],
         affiliation=affiliation,
         relatedOrganizations=related_organizations,
@@ -534,6 +534,35 @@ def write_sources(page_root: Path, sources: List[ParsedWikiSource]) -> Path:
     return output_path
 
 
+def load_json_list(path: Path) -> List[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def merge_single_source(existing_path: Path, source: ParsedWikiSource) -> List[ParsedWikiSource]:
+    existing = load_json_list(existing_path)
+    merged: List[ParsedWikiSource] = []
+    replaced = False
+    for item in existing:
+        slug = str(item.get("slug") or "")
+        if slug == source.slug:
+            merged.append(source)
+            replaced = True
+            continue
+        try:
+            merged.append(ParsedWikiSource(**item))
+        except Exception:
+            continue
+    if not replaced:
+        merged.append(source)
+    return merged
+
+
 def write_topic_like(page_root: Path, name: str, values: List[dict[str, Any]]) -> Path:
     output_dir = page_root / "src" / "data" / "generated" / "wiki-sync"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -588,6 +617,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--config", help="YAML config path")
     common.add_argument("--wiki-root", help="llm-wiki root path")
     common.add_argument("--page-root", help="website repo root path")
+    common.add_argument("--slug", help="Optional source slug for single-page sync")
 
     inspect_parser = subparsers.add_parser("inspect", parents=[common], help="Inspect wiki content and print a manifest.")
     inspect_parser.set_defaults(mode="inspect")
@@ -612,23 +642,40 @@ def command_sync(args: argparse.Namespace) -> int:
     wiki_root, page_root = resolve_roots(args)
     manifest = build_manifest(wiki_root, page_root)
     manifest_path = write_manifest(page_root, manifest)
-    parsed_sources = [parse_note_source(Path(source)) for source in manifest.sources]
+    if args.slug:
+        source_path = wiki_root / "wiki" / "sources" / f"{args.slug}.md"
+        if not source_path.is_file():
+            raise SystemExit(f"source markdown not found: {source_path}")
+        parsed_source = parse_note_source(source_path)
+        existing_sources_path = page_root / "src" / "data" / "generated" / "wiki-sync" / "sources.json"
+        parsed_sources = merge_single_source(existing_sources_path, parsed_source)
+    else:
+        parsed_sources = [parse_note_source(Path(source)) for source in manifest.sources]
     sources_path = write_sources(page_root, parsed_sources)
-    parsed_topics = [parse_topic_like(Path(topic), "topic") for topic in manifest.topics]
-    topics_path = write_topic_like(page_root, "topics", [asdict(item) for item in parsed_topics])
-    parsed_syntheses = [parse_topic_like(Path(item), "synthesis") for item in manifest.synthesis]
-    syntheses_path = write_topic_like(page_root, "synthesis", [asdict(item) for item in parsed_syntheses])
-    graph_data_path = write_graph_data(page_root, wiki_root)
+    topics_path = None
+    syntheses_path = None
+    graph_data_path = None
+    parsed_topics = []
+    parsed_syntheses = []
+    if not args.slug:
+      parsed_topics = [parse_topic_like(Path(topic), "topic") for topic in manifest.topics]
+      topics_path = write_topic_like(page_root, "topics", [asdict(item) for item in parsed_topics])
+      parsed_syntheses = [parse_topic_like(Path(item), "synthesis") for item in manifest.synthesis]
+      syntheses_path = write_topic_like(page_root, "synthesis", [asdict(item) for item in parsed_syntheses])
+      graph_data_path = write_graph_data(page_root, wiki_root)
     for item in parsed_sources:
       write_detail_json(page_root, "source", item.slug, asdict(item))
-    for item in parsed_topics:
-      write_detail_json(page_root, "topic", item.slug, asdict(item))
-    for item in parsed_syntheses:
-      write_detail_json(page_root, "synthesis", item.slug, asdict(item))
+    if not args.slug:
+      for item in parsed_topics:
+        write_detail_json(page_root, "topic", item.slug, asdict(item))
+      for item in parsed_syntheses:
+        write_detail_json(page_root, "synthesis", item.slug, asdict(item))
     print(f"manifest_path={manifest_path}")
     print(f"sources_path={sources_path}")
-    print(f"topics_path={topics_path}")
-    print(f"synthesis_path={syntheses_path}")
+    if topics_path:
+      print(f"topics_path={topics_path}")
+    if syntheses_path:
+      print(f"synthesis_path={syntheses_path}")
     if graph_data_path:
       print(f"graph_data_path={graph_data_path}")
     return 0

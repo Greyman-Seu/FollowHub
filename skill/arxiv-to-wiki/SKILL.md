@@ -194,7 +194,7 @@ This should mirror Follow data updates: the website reads cloud data, while the 
 9. After every source note write, run the source completeness checker for the produced slug.
 10. If the checker reports missing required sections, labeled risk fields, source links, domain, tags, or related topics, edit the source note and rerun the checker until it passes.
 11. Validate the wiki, build the website/R2 package, then run the checker again with `--package-dir`; missing `riskScenarios`, `riskJudgment`, or an inline `zone` on any packaged figure is a blocker.
-12. Treat publication as a terminal condition, not a best-effort extra. After upload, verify that the package manifest, `source/<slug>.json`, and the public `/wiki/source/<slug>` page return successfully and correspond to the requested paper.
+12. Treat publication as a terminal condition, not a best-effort extra. After upload, commit and push the synchronized data to `page_github/main`, wait for deployment, and verify that the package manifest, `source/<slug>.json`, and `https://tenstep.top/wiki/source/<slug>` return successfully and correspond to the requested paper. Local sync, R2-only upload, or a merely queued deployment is not completion.
 13. If a pre-existing validation error blocks publication, make a safe deterministic schema repair when possible and rerun validation. Otherwise report the exact publication blocker; never silently finish after only producing the local note.
 14. Do not ask for routine confirmation before analysis or publication. Ask only when a material ambiguity cannot be resolved from the paper reference, configured wiki, or explicit mode.
 

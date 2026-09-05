@@ -208,7 +208,7 @@ def build_failure_message(run_date: str, result: Dict[str, Any], summary_url: st
     if wechat_health:
         lines.append(wechat_health + "。")
     lines.append("已发布的部分内容：{0}".format(summary_url))
-    lines.append("系统会在次日 07:00 重新开始尝试。")
+    lines.append("系统会在下一个计划时段重新开始尝试。")
     return "\n".join(lines)
 
 

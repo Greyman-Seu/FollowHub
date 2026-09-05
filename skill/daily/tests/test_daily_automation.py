@@ -642,12 +642,24 @@ class ScheduledRunnerTest(unittest.TestCase):
 
 
 class SystemdUnitTest(unittest.TestCase):
-    def test_timer_has_two_hour_checks_from_seven(self):
+    def test_timer_uses_weekday_afternoons_and_weekend_mornings(self):
         timer = installer.build_timer_unit()
-        for hour in installer.RUN_HOURS:
+        for hour in installer.WEEKDAY_RUN_HOURS:
             self.assertIn(
-                "OnCalendar=*-*-* {0:02d}:00:00 Asia/Shanghai".format(hour), timer
+                "OnCalendar=Mon..Fri *-*-* {0:02d}:00:00 Asia/Shanghai".format(
+                    hour
+                ),
+                timer,
             )
+        for day in ("Sat", "Sun"):
+            for hour in installer.WEEKEND_RUN_HOURS:
+                self.assertIn(
+                    "OnCalendar={0} *-*-* {1:02d}:00:00 Asia/Shanghai".format(
+                        day, hour
+                    ),
+                    timer,
+                )
+        self.assertNotIn("OnCalendar=Mon..Fri *-*-* 07:00:00", timer)
         self.assertIn("Persistent=true", timer)
 
     def test_service_uses_exact_repo_and_config(self):

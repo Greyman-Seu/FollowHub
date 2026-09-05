@@ -48,7 +48,12 @@ For an unattended workstation, install the user-level systemd timer:
 python3 skill/daily/scripts/install_scheduled_daily.py
 ```
 
-The timer runs at 07:00 Asia/Shanghai and then every two hours through 23:00. The runner:
+The timer uses an Asia/Shanghai schedule aligned with source availability:
+
+- Monday through Friday: 13:00, then every two hours through 23:00.
+- Saturday and Sunday: 07:00, 09:00, and 11:00 for the RSS-only workflow.
+
+The runner:
 
 - uses a per-date file lock so attempts cannot overlap
 - keeps the daily timer active on weekends for RSS while skipping arXiv by the Asia/Shanghai run date

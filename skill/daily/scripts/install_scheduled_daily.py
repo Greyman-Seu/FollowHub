@@ -13,7 +13,8 @@ from typing import Dict, List, Optional
 
 
 UNIT_NAME = "followhub-daily"
-RUN_HOURS = (7, 9, 11, 13, 15, 17, 19, 21, 23)
+WEEKDAY_RUN_HOURS = (13, 15, 17, 19, 21, 23)
+WEEKEND_RUN_HOURS = (7, 9, 11)
 SYSTEM_PATH = (
     "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:"
     "/sbin:/bin:/usr/games:/usr/local/games:/snap/bin"
@@ -112,12 +113,18 @@ Nice=5
 
 
 def build_timer_unit() -> str:
-    calendar_lines = "\n".join(
-        "OnCalendar=*-*-* {0:02d}:00:00 Asia/Shanghai".format(hour)
-        for hour in RUN_HOURS
-    )
+    weekday_lines = [
+        "OnCalendar=Mon..Fri *-*-* {0:02d}:00:00 Asia/Shanghai".format(hour)
+        for hour in WEEKDAY_RUN_HOURS
+    ]
+    weekend_lines = [
+        "OnCalendar={0} *-*-* {1:02d}:00:00 Asia/Shanghai".format(day, hour)
+        for day in ("Sat", "Sun")
+        for hour in WEEKEND_RUN_HOURS
+    ]
+    calendar_lines = "\n".join(weekday_lines + weekend_lines)
     return """[Unit]
-Description=Check FollowHub daily every two hours from 07:00
+Description=Check FollowHub daily on weekday afternoons and weekend mornings
 
 [Timer]
 {calendar_lines}
@@ -234,7 +241,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             {
                 "installed": paths,
                 "enabled": not args.no_enable,
-                "hours": list(RUN_HOURS),
+                "weekday_hours": list(WEEKDAY_RUN_HOURS),
+                "weekend_hours": list(WEEKEND_RUN_HOURS),
                 "timezone": "Asia/Shanghai",
                 "node_bin": str(node_bin),
                 "notifications": bool(args.notify_chat_id),

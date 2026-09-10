@@ -387,7 +387,14 @@ def parse_note_source(path: Path) -> ParsedWikiSource:
     related_topics = normalize_slug_list(frontmatter.get("related_topics"), limit=2) or normalize_slug_list(section_related_topics, limit=2)
     images = frontmatter.get("images") if isinstance(frontmatter.get("images"), list) else []
     hero_image = str(frontmatter.get("hero_image") or "") or first_image_url(intuition) or (images[0] if images else "")
-    figures = classify_figures(("method", method), ("results", results), ("insights", insights), ("risks", risks))
+    figures = classify_figures(
+        ("intuition", intuition),
+        ("background", background),
+        ("method", method),
+        ("results", results),
+        ("insights", insights),
+        ("risks", risks),
+    )
     parsed_results_table = parse_markdown_table(results_table)
     primary_domain = str(
         frontmatter.get("primary_domain_slug")

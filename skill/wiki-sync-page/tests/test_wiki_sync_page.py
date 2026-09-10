@@ -43,6 +43,37 @@ Example.
         self.assertEqual(source.primaryDomainSlug, "physical-embodied-intelligence")
         self.assertEqual(source.relatedCompanies, [])
 
+    def test_source_preserves_intuition_and_background_figure_zones(self):
+        note = """---
+title: "Example Paper"
+slug: "example-paper"
+source_type: "paper"
+source_url: "https://example.com/paper"
+---
+# Example Paper
+
+## 直观理解
+
+![Overview](https://example.com/overview.png)
+
+## 背景与问题
+
+![Motivation](https://example.com/motivation.png)
+
+## 方法
+
+![Architecture](https://example.com/architecture.png)
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "example-paper.md"
+            path.write_text(note, encoding="utf-8")
+            source = wiki_sync_page.parse_note_source(path)
+
+        self.assertEqual(
+            [figure["zone"] for figure in source.figureGallery],
+            ["intuition", "background", "method"],
+        )
+
     def test_command_sync_slug_mode_keeps_single_source_scope(self):
         with tempfile.TemporaryDirectory() as wiki_dir, tempfile.TemporaryDirectory() as page_dir:
             wiki_root = Path(wiki_dir)

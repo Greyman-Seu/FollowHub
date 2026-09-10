@@ -15,6 +15,41 @@ SPEC.loader.exec_module(wiki_sync_page)
 
 
 class WikiSyncPageTests(unittest.TestCase):
+    def test_synthesis_preserves_relation_slugs_and_summary(self):
+        note = """---
+title: "Force Review"
+slug: "force-review"
+type: synthesis
+summary: "A structured force review."
+judgment: "Force signals have distinct control roles."
+source_slugs:
+  - "2606.29948-force-paper"
+topic_slugs:
+  - "contact-rich-manipulation"
+claims:
+  - "Timing determines whether feedback can change an action."
+open_questions:
+  - "How should force targets fail safely?"
+---
+# Force Review
+
+> Two related papers.
+
+See [[2606.29948-force-paper|Force Paper]].
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "force-review.md"
+            path.write_text(note, encoding="utf-8")
+            synthesis = wiki_sync_page.parse_topic_like(path, "synthesis")
+
+        self.assertEqual(synthesis.summary, "A structured force review.")
+        self.assertEqual(synthesis.sourceSlugs, ["2606.29948-force-paper"])
+        self.assertEqual(synthesis.topicSlugs, ["contact-rich-manipulation"])
+        self.assertEqual(synthesis.judgment, "Force signals have distinct control roles.")
+        self.assertEqual(synthesis.claims, ["Timing determines whether feedback can change an action."])
+        self.assertEqual(synthesis.openQuestions, ["How should force targets fail safely?"])
+        self.assertEqual(synthesis.relatedPages, ["2606.29948-force-paper"])
+
     def test_source_uses_explicit_hero_date_and_normalized_domain(self):
         note = """---
 title: "Example Paper"

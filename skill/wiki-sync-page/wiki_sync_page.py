@@ -112,6 +112,9 @@ class ParsedWikiTopic:
     updated: str
     sourceTitles: List[str]
     relatedPages: List[str]
+    sourceSlugs: List[str]
+    synthesisSlugs: List[str]
+    openQuestions: List[str]
 
 
 @dataclass
@@ -125,6 +128,11 @@ class ParsedWikiSynthesis:
     updated: str
     sourceTitles: List[str]
     relatedPages: List[str]
+    sourceSlugs: List[str]
+    topicSlugs: List[str]
+    judgment: str
+    claims: List[str]
+    openQuestions: List[str]
 
 
 def resolve_roots(args: argparse.Namespace) -> tuple[Path, Path]:
@@ -509,7 +517,7 @@ def parse_topic_like(path: Path, kind: str) -> ParsedWikiTopic | ParsedWikiSynth
             title = line[2:].strip()
             break
     title = title or path.stem
-    summary = first_nonempty_paragraph(body)
+    summary = str(frontmatter.get("summary") or first_nonempty_paragraph(body))
     domain = str(
         frontmatter.get("domain")
         or frontmatter.get("primary_domain_slug")
@@ -528,8 +536,22 @@ def parse_topic_like(path: Path, kind: str) -> ParsedWikiTopic | ParsedWikiSynth
         "relatedPages": extract_related_pages(body),
     }
     if kind == "topic":
-        return ParsedWikiTopic(domain=slugify(domain) if domain else "", **parsed)
-    return ParsedWikiSynthesis(**parsed)
+        domains = normalize_slug_list(frontmatter.get("domains"), limit=1)
+        return ParsedWikiTopic(
+            domain=slugify(domain) if domain else (domains[0] if domains else ""),
+            sourceSlugs=normalize_label_list(frontmatter.get("source_slugs")),
+            synthesisSlugs=normalize_label_list(frontmatter.get("synthesis_slugs")),
+            openQuestions=normalize_label_list(frontmatter.get("open_questions")),
+            **parsed,
+        )
+    return ParsedWikiSynthesis(
+        sourceSlugs=normalize_label_list(frontmatter.get("source_slugs")),
+        topicSlugs=normalize_label_list(frontmatter.get("topic_slugs")),
+        judgment=str(frontmatter.get("judgment") or ""),
+        claims=normalize_label_list(frontmatter.get("claims")),
+        openQuestions=normalize_label_list(frontmatter.get("open_questions")),
+        **parsed,
+    )
 
 
 def write_sources(page_root: Path, sources: List[Any]) -> Path:

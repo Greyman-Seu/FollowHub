@@ -188,7 +188,12 @@ def check_markdown(path: Path) -> tuple[list[str], list[str]]:
     if not title:
         errors.append("missing H1 title")
 
-    for heading in REQUIRED_SECTIONS:
+    is_blog = bool(re.search(r"^(?:material_type|source_type):\s*['\"]?blog['\"]?\s*$", frontmatter, re.MULTILINE))
+    required_sections = REQUIRED_SECTIONS
+    if is_blog:
+        required_sections = [heading for heading in REQUIRED_SECTIONS if not heading.startswith("论文摘要")]
+        required_sections = [*required_sections, "来源与证据"]
+    for heading in required_sections:
         section = section_after_heading(body, heading)
         if not strip_markdown(section):
             errors.append(f"missing or empty section: {heading}")

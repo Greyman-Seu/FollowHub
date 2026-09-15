@@ -110,6 +110,20 @@ An English abstract.
         self.assertTrue(any("methodBreakdown" in error for error in errors))
         self.assertTrue(any("methodTakeaways" in error for error in errors))
 
+    def test_blog_requires_evidence_instead_of_paper_abstracts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_note(Path(tmp), thin=False)
+            text = path.read_text().replace("source_type: paper", "source_type: web\nmaterial_type: blog")
+            text = re.sub(r"## 论文摘要（英文原文）.*?(?=## 方法)", "", text, flags=re.S)
+            path.write_text(text)
+            errors, _ = MODULE.check_markdown(path)
+            self.assertEqual(errors, ["missing or empty section: 来源与证据"])
+            path.write_text(text + "\n## 来源与证据\n作者博客，实验细节尚未公开。\n")
+            self.assertEqual(MODULE.check_markdown(path)[0], [])
+            path.write_text(path.read_text().replace("material_type: blog", "material_type: paper"))
+            errors, _ = MODULE.check_markdown(path)
+            self.assertTrue(any("论文摘要（英文原文）" in error for error in errors))
+
     def test_accepts_detailed_structured_background_and_method(self):
         with tempfile.TemporaryDirectory() as tmp:
             errors, _ = MODULE.check_markdown(self.write_note(Path(tmp), thin=False))

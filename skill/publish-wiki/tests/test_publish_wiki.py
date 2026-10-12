@@ -54,6 +54,13 @@ class PublishWikiTests(unittest.TestCase):
         self.assertEqual(args.slug, "paper-slug")
         self.assertIsNone(args.verify_slug)
 
+    def test_validate_remote_prefix_rejects_follow_runtime_prefix(self):
+        with self.assertRaisesRegex(ValueError, "reserved for Follow runtime data"):
+            publish_wiki.validate_remote_prefix("/follow/")
+
+    def test_validate_remote_prefix_normalizes_wiki_prefix(self):
+        self.assertEqual(publish_wiki.validate_remote_prefix("/wiki/"), "wiki")
+
 
 if __name__ == "__main__":
     unittest.main()

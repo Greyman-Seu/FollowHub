@@ -18,6 +18,7 @@ from urllib.request import Request, urlopen
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WIKI_SYNC_SCRIPT = REPO_ROOT / "skill" / "wiki-sync-page" / "wiki_sync_page.py"
 RCLI_SCRIPT = REPO_ROOT / "skill" / "rcli" / "scripts" / "rcli.py"
+RESERVED_REMOTE_PREFIXES = {"follow"}
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -129,8 +130,18 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_remote_prefix(prefix: str) -> str:
+    normalized = prefix.strip().strip("/")
+    if normalized in RESERVED_REMOTE_PREFIXES:
+        raise ValueError(
+            f"remote prefix {normalized!r} is reserved for Follow runtime data; use the default wiki prefix"
+        )
+    return normalized
+
+
 def main() -> int:
     args = build_parser().parse_args()
+    remote_prefix = validate_remote_prefix(args.remote_prefix)
     wiki_root = Path(args.wiki_root).expanduser().resolve()
     page_root = Path(args.page_root).expanduser().resolve()
     sync_args = [
@@ -170,7 +181,7 @@ def main() -> int:
           "--json",
           "sync",
           str(stage),
-          args.remote_prefix,
+          remote_prefix,
       ])
       if upload.returncode != 0:
           raise SystemExit(upload.stderr or upload.stdout)
@@ -187,7 +198,7 @@ def main() -> int:
           wait_for_public_url(public_page_url, args.verify_timeout)
       print(json.dumps({
           "ok": True,
-          "remote_prefix": args.remote_prefix,
+          "remote_prefix": remote_prefix,
           "url": payload.get("url"),
           "public_page_url": public_page_url,
           "generated_dir": str(generated_dir),

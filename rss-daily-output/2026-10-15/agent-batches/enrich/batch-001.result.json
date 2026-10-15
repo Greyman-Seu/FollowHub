@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "id": "wechat:https://mp.weixin.qq.com/s?__biz=MzI3MTA0MTk1MA==&mid=2652734258&idx=3&sn=fb64c7fad03bacf53b64d93780f97ea0",
+      "one_liner_zh": "Zijian Zeng以AI辅助流程读解HC615冷战密码，并公开可离线复核的源码证据。",
+      "summary_cn": "UCSI University研究者Zijian Zeng读解了约1952年捷克斯洛伐克密码课程材料HC Portal第615号条目，结果获项目协调人Eugen Antal确认，官方目录已标记为Solved并署名。公开仓库收录10个研究条目，其中7个案例具备可运行复核程序，8条验证命令可通过，可用一条Python命令在本地离线核验固定证据。",
+      "summary_generated_by": "agent",
+      "related_organizations": [
+        "UCSI University",
+        "HC Portal",
+        "Slovak University of Technology"
+      ],
+      "related_companies": [
+        "OpenAI",
+        "GitHub"
+      ],
+      "key_people": [
+        "Zijian Zeng",
+        "Eugen Antal"
+      ]
+    }
+  ]
+}

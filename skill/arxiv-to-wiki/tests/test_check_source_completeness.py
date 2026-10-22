@@ -4,6 +4,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from typing import List
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "check_source_completeness.py"
@@ -17,6 +18,14 @@ def detailed_text(seed: str, minimum: int) -> str:
     return (seed * ((minimum // len(seed)) + 2))[: minimum + 10]
 
 
+def detailed_method_breakdown() -> List[str]:
+    return [
+        detailed_text("步骤一说明输入、关键处理、输出和作用，", 60),
+        detailed_text("步骤二说明监督信号、优化目标和数据流，", 60),
+        detailed_text("步骤三说明训练阶段与推理路径的差异，", 60),
+    ]
+
+
 class SourceCompletenessTests(unittest.TestCase):
     def write_note(self, root: Path, *, thin: bool) -> Path:
         source_dir = root / "wiki" / "sources"
@@ -24,8 +33,8 @@ class SourceCompletenessTests(unittest.TestCase):
         motivation = "很重要。" if thin else detailed_text("视觉遮挡使机器人无法判断接触变化，", 70)
         gap = "还不够。" if thin else detailed_text("已有方法缺少高频闭环与跨模态对齐，", 70)
         overview = "使用模型。" if thin else detailed_text("方法先学习视觉规划，再通过触觉反馈连续修正动作，", 90)
-        core = "两个模块。" if thin else detailed_text("核心机制缓存视觉上下文并让快速专家完成动作去噪，", 90)
-        breakdown = "- 一个步骤。" if thin else "- 编码多帧触觉。\n- 缓存视觉上下文。\n- 高频修正动作。"
+        core = "两个模块。" if thin else detailed_text("核心机制缓存视觉上下文并让快速专家完成动作去噪，", 130)
+        breakdown = "- 一个步骤。" if thin else "\n".join(f"- {item}" for item in detailed_method_breakdown())
         takeaways = "- 有效。" if thin else "- 视觉负责规划。\n- 触觉负责快速纠偏。"
         body = f"""---
 source_type: paper
@@ -130,6 +139,48 @@ An English abstract.
 
         self.assertEqual(errors, [])
 
+    def test_rejects_thin_method_breakdown_items(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.write_note(Path(tmp), thin=False)
+            text = path.read_text(encoding="utf-8")
+            text = re.sub(
+                r"\*\*方法拆解：\*\*.*?(?=\*\*关键要点：\*\*)",
+                "**方法拆解：**\n- 编码视觉。\n- 预测动作。\n- 输出控制。\n\n",
+                text,
+                flags=re.S,
+            )
+            path.write_text(text, encoding="utf-8")
+
+            errors, _ = MODULE.check_markdown(path)
+
+        self.assertTrue(any("methodBreakdown item 0" in error for error in errors))
+
+    def test_package_rejects_thin_method_breakdown_items(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp)
+            source_dir = package_dir / "source"
+            source_dir.mkdir()
+            payload = {
+                "tldr": "结论",
+                "method": "方法",
+                "risks": "风险",
+                "sourceUrl": "https://arxiv.org/abs/1234.56789",
+                "riskLimitations": ["限制"],
+                "riskScenarios": ["场景"],
+                "riskJudgment": ["判断"],
+                "backgroundMotivation": detailed_text("动机", 70),
+                "backgroundGap": detailed_text("缺口", 70),
+                "methodOverview": detailed_text("概述", 90),
+                "methodCore": detailed_text("机制", 130),
+                "methodBreakdown": ["步骤一", "步骤二", "步骤三"],
+                "methodTakeaways": ["要点一", "要点二"],
+            }
+            (source_dir / "example.json").write_text(json.dumps(payload), encoding="utf-8")
+
+            errors, _ = MODULE.check_package_json(package_dir, "example")
+
+        self.assertTrue(any("methodBreakdown item 0" in error for error in errors))
+
     def test_accepts_heading_structured_background_and_method(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = self.write_note(Path(tmp), thin=False)
@@ -198,8 +249,8 @@ An English abstract.
                 "backgroundMotivation": detailed_text("动机", 70),
                 "backgroundGap": detailed_text("缺口", 70),
                 "methodOverview": detailed_text("概述", 90),
-                "methodCore": detailed_text("机制", 90),
-                "methodBreakdown": ["步骤一", "步骤二", "步骤三"],
+                "methodCore": detailed_text("机制", 130),
+                "methodBreakdown": detailed_method_breakdown(),
                 "methodTakeaways": ["要点一", "要点二"],
                 "figureGallery": [{"src": "https://example.com/overview.png"}],
                 "heroImage": "",
@@ -226,8 +277,8 @@ An English abstract.
                 "backgroundMotivation": detailed_text("动机", 70),
                 "backgroundGap": detailed_text("缺口", 70),
                 "methodOverview": detailed_text("概述", 90),
-                "methodCore": detailed_text("机制", 90),
-                "methodBreakdown": ["步骤一", "步骤二", "步骤三"],
+                "methodCore": detailed_text("机制", 130),
+                "methodBreakdown": detailed_method_breakdown(),
                 "methodTakeaways": ["要点一", "要点二"],
                 "figureGallery": [{"src": "https://example.com/overview.png"}],
                 "heroImage": "https://example.com/overview.png",

@@ -123,7 +123,7 @@ This means:
 - multi-paper runs may parallelize, but may not downgrade outputs into thin summary cards
 - each worker should still target an `OpenVLA`-level source note:
   - strong `背景与问题`
-  - real `方法` decomposition
+  - self-contained `方法` decomposition that explains inputs/outputs, component transformations, supervision or objectives, training stages, and inference flow when available
   - concrete `结果`
   - non-generic `洞察`
   - figures when useful, placed next to the section they explain instead of only in an end gallery
@@ -227,8 +227,8 @@ Required source-note fields include:
 - all stable paper sections from `paper-analyze`
 - structured, reader-facing background and method blocks:
   - `**动机：**` and `**问题缺口：**`, each with at least 60 meaningful characters
-  - `**方法概述：**` and `**核心机制：**`, each with at least 80 meaningful characters
-  - `**方法拆解：**` with at least 3 concrete steps or components
+  - `**方法概述：**` with at least 80 meaningful characters and `**核心机制：**` with at least 120
+  - `**方法拆解：**` with at least 3 concrete steps or components, each containing at least 50 meaningful characters and explaining operations rather than only naming modules
   - `**关键要点：**` with at least 2 paper-specific takeaways
 - `风险与判断` with explicit labeled blocks:
   - `**局限：**`
@@ -250,6 +250,8 @@ Required source-note fields include:
 Useful figures must remain attached to their explanatory section through the full Markdown -> package JSON -> Page path. The Page may keep an end gallery only for genuinely unclassified supplemental images; it must not be the sole location of figures already placed under a supported source-note section.
 
 These thresholds are a mechanical floor, not the writing target. Never pad a field or fill it with a placeholder merely to pass. Re-read the paper or existing note and add a concrete, paper-specific explanation that lets a reader understand why the work is needed and how it operates.
+
+For the method section, the writing target is a self-contained explanation of the main computation. When the paper provides the details, cover architecture, data or supervision, optimization objectives, training stages, and inference-time behavior. Each method-breakdown item should normally use 2-4 sentences to explain what the component does, how it works, and why it is needed; do not substitute a figure-caption paraphrase or a list of module names.
 
 The bold labels above are the canonical authoring syntax and must be emitted verbatim by new runs. `### 动机` or `### 方法概述` is supported only as a legacy parser fallback; do not generate a mixture of headings and bold labels. Supplemental method subsections are allowed only after all four required method blocks are present.
 

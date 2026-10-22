@@ -48,12 +48,16 @@ STRUCTURED_TEXT_BLOCKS = {
     "backgroundMotivation": ("背景与问题", ["动机", "为什么做", "Motivation"], 60),
     "backgroundGap": ("背景与问题", ["问题缺口", "Gap"], 60),
     "methodOverview": ("方法", ["方法概述", "Overview"], 80),
-    "methodCore": ("方法", ["核心机制", "Core Mechanism"], 80),
+    "methodCore": ("方法", ["核心机制", "Core Mechanism"], 120),
 }
 
 STRUCTURED_LIST_BLOCKS = {
     "methodBreakdown": ("方法", ["方法拆解", "Breakdown"], 3),
     "methodTakeaways": ("方法", ["关键要点", "Key Takeaways"], 2),
+}
+
+STRUCTURED_LIST_ITEM_MIN_CHARS = {
+    "methodBreakdown": 50,
 }
 
 JSON_REQUIRED_ARRAYS = {
@@ -211,11 +215,21 @@ def check_markdown(path: Path) -> tuple[list[str], list[str]]:
     for field, (heading, labels, minimum) in STRUCTURED_LIST_BLOCKS.items():
         section = section_after_heading(body, heading)
         block = extract_labeled_block(section, labels)
-        actual = len(split_list_items(block))
+        items = split_list_items(block)
+        actual = len(items)
         if actual < minimum:
             errors.append(
                 f"structured list {field} has {actual} item(s), need at least {minimum}"
             )
+        minimum_item_length = STRUCTURED_LIST_ITEM_MIN_CHARS.get(field)
+        if minimum_item_length:
+            for index, item in enumerate(items):
+                actual_item_length = meaningful_length(item)
+                if actual_item_length < minimum_item_length:
+                    errors.append(
+                        f"structured list {field} item {index} is too short: "
+                        f"{actual_item_length} meaningful character(s), need at least {minimum_item_length}"
+                    )
 
     risk_section = section_after_heading(body, "风险与判断")
     for field, labels in RISK_LABELS.items():
@@ -255,6 +269,17 @@ def check_package_json(package_dir: Path, slug: str) -> tuple[list[str], list[st
                 f"package JSON text field {key} is missing or too short: "
                 f"{actual} meaningful character(s), need at least {minimum}"
             )
+
+    for key, minimum_item_length in STRUCTURED_LIST_ITEM_MIN_CHARS.items():
+        value = data.get(key)
+        items = value if isinstance(value, list) else []
+        for index, item in enumerate(items):
+            actual_item_length = meaningful_length(str(item))
+            if actual_item_length < minimum_item_length:
+                errors.append(
+                    f"package JSON array field {key} item {index} is too short: "
+                    f"{actual_item_length} meaningful character(s), need at least {minimum_item_length}"
+                )
 
     source_url = str(data.get("sourceUrl") or data.get("htmlUrl") or "")
     if "arxiv.org" in source_url:

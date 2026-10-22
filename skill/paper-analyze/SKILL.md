@@ -153,11 +153,11 @@ For the structured blocks inside `背景与问题` and `方法`, emit exactly th
 
 **方法概述：** 至少 80 个有效字符，先给出完整流程骨架。
 
-**核心机制：** 至少 80 个有效字符，解释机制为何成立。
+**核心机制：** 至少 120 个有效字符，解释机制为何成立。
 
 **方法拆解：**
 
-- 至少 3 个具体步骤或组件。
+- 至少 3 个具体步骤或组件；每条都要说明输入、关键处理、输出或作用，不能只写模块名。
 
 **关键要点：**
 
@@ -235,6 +235,7 @@ That means:
 
 - every required section must contain paper-specific substance
 - `方法` must explain the actual mechanism, not only restate the problem
+- `方法` must describe the main computation and training/inference flow in enough detail for later comparison or reimplementation planning
 - `结果` must include concrete targets, numbers, or ablations when the source provides them
 - `洞察` must contain real synthesis and judgment, not generic praise
 - figures should be included when they materially improve comprehension
@@ -259,8 +260,9 @@ For fast reading, prefer one stable compact structure:
 - `摘要`
   - keep both original English abstract and Chinese translation
 - `方法`
-  - short overview first
-  - then 3-5 method bullets
+  - overview first, then 3-6 substantive method bullets
+  - cover the main architecture, data or supervision, optimization objective, training stages, and inference path when the paper provides them
+  - normally use 2-4 sentences per bullet to explain what the component does, how it works, and why it is needed
   - place architecture / pipeline figures here
   - match the richer OpenVLA-style structure when the source supports it
 - `结果`
@@ -298,8 +300,12 @@ Section intent:
   - add a faithful Chinese translation
   - do not paraphrase away key numbers or constraints
 - `方法`
-  - first: one short overview paragraph
-  - then: 3-5 bullets for mechanism / pipeline / components
+  - first: one overview paragraph that names the end-to-end input, output, and major stages
+  - then: 3-6 substantive bullets for mechanism / pipeline / components
+  - make the section self-contained: a reader should be able to reconstruct the main data flow without reading the original paper
+  - for each important component, explain its input, transformation, output, and role; for training papers, also cover supervision, loss or advantage construction, data mixing, and deployment-time differences
+  - explain the central equation or algorithm in prose when it carries the main contribution; include important hyperparameters only when they clarify how the method works
+  - do not reduce the method to module names, a figure-caption paraphrase, or a list of training-stage labels
   - if useful, say why the method could work, not just what it contains
   - internally structure it as:
     - `方法概述`
@@ -307,7 +313,7 @@ Section intent:
     - `方法拆解`
     - `关键要点`
   - emit them as the exact labels `**方法概述：**`, `**核心机制：**`, `**方法拆解：**`, and `**关键要点：**`; do not substitute arbitrary `###` headings
-  - for wiki-ready paper notes, `方法概述` and `核心机制` must each contain at least 80 meaningful characters, `方法拆解` at least 3 concrete items, and `关键要点` at least 2 paper-specific items
+  - for wiki-ready paper notes, `方法概述` must contain at least 80 meaningful characters, `核心机制` at least 120, `方法拆解` at least 3 concrete items with at least 50 meaningful characters per item, and `关键要点` at least 2 paper-specific items
 - `结果`
   - list only the most decision-relevant outcomes
   - keep 1 compact table
@@ -430,6 +436,8 @@ The note is not ready if any of these are empty or placeholder-like:
 
 - frontmatter source type, source URL, date, domain, tags, related topics, and status
 - all required paper sections
+- a self-contained `方法` section that covers the main inputs/outputs, component-level transformations, supervision or objectives, training stages, and inference path when available
+- `方法拆解` entries that each explain concrete operations and their purpose rather than only naming a module or stage
 - `风险与判断` labeled blocks:
   - `**局限：**`
   - `**适用场景：**`
@@ -488,6 +496,7 @@ Do not sync the website from this skill.
 | Mistake | Fix |
 |---------|-----|
 | Returning only a short summary | Produce the full Markdown note with stable sections |
+| Listing only method module names or training stages | Explain each component's input, transformation, output, and purpose, plus supervision and inference differences |
 | Writing directly for the blog | Keep the note structured and source-oriented |
 | Hard-coding one wiki path | Read the configured path from YAML |
 | Mixing website sync into analysis | Leave that to `wiki-sync-page` |
